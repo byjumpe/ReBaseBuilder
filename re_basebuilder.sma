@@ -7,6 +7,7 @@
 #pragma semicolon 1
 
 #include <amxmodx>
+#include <amxmisc>
 #include <engine>
 #include <fakemeta>
 #include <reapi>
@@ -59,8 +60,6 @@ public plugin_init(){
 	
 	g_iEntBarrier = find_ent_by_tname(-1, "barrier");
 	
-	register_clcmd("drop", "cmd_drop");
-	
 	register_message(get_user_msgid("SendAudio"), "Msg_SendAudio");
 	set_msg_block(get_user_msgid("ClCorpse"), BLOCK_SET);//трупы изчезают
 	
@@ -75,6 +74,7 @@ public plugin_init(){
 	RegisterHookChain(RG_RoundEnd, "RG_Round_End", true);
 	RegisterHookChain(RG_CSGameRules_RestartRound, "CSGameRules_RestartRound_Pre", false);
 	RegisterHookChain(RG_CSGameRules_RestartRound, "CSGameRules_RestartRound_Post", true);
+	RegisterHookChain(RG_CBasePlayer_DropPlayerItem, "CBasePlayer_DropPlayerItem_Pre", false);
 	RegisterHookChain(RG_CBasePlayer_Spawn, "CBasePlayer_Spawn", true);
 	RegisterHookChain(RG_CSGameRules_OnRoundFreezeEnd, "CSGameRules_OnRoundFreezeEnd", true);
 	RegisterHookChain(RG_CBasePlayer_Killed, "CBasePlayer_Killed", true);
@@ -105,26 +105,28 @@ public plugin_cfg(){
 }
 
 public client_putinserver(id){
-	
+
 	//
 }
 
 public client_disconnected(id){
-	
+
 	g_iTeam[id] = TEAM_UNASSIGNED;
 	
 	remove_task(id+TASK_RESPAWN);//обнуляем респавн
 }
 
-public cmd_drop(){
-	
-	return PLUGIN_HANDLED;//блокируем дроп оружия
+public CBasePlayer_DropPlayerItem_Pre(const id){
+
+	client_printex(id, print_center, "#Weapon_Cannot_Be_Dropped");
+	SetHookChainReturn(ATYPE_INTEGER, 1);
+	return HC_SUPERCEDE;
 }
 
 public CSGameRules_DeadPlayerWeapons(id){
 	
-    SetHookChainReturn(ATYPE_INTEGER, GR_PLR_DROP_GUN_NO);//оружия с умерших не дропается, избегаем возможность когда зомби смогут поднять его
-    return HC_SUPERCEDE;
+	SetHookChainReturn(ATYPE_INTEGER, GR_PLR_DROP_GUN_NO);//оружия с умерших не дропается, избегаем возможность когда зомби смогут поднять его
+	return HC_SUPERCEDE;
 }
 
 public CSGameRules_RestartRound_Pre(){
@@ -133,7 +135,7 @@ public CSGameRules_RestartRound_Pre(){
 
 		new iPlayers[MAX_PLAYERS], iPlCount;
 
-		get_players(iPlayers, iPlCount, "h");
+		get_players_ex(iPlayers, iPlCount, GetPlayers_ExcludeBots|GetPlayers_ExcludeHLTV);
 
 		for(new i, iPlayer, TeamName:iTeamToSet; i < iPlCount; i++){
 		
@@ -168,11 +170,11 @@ public CSGameRules_OnRoundFreezeEnd(){
 	set_entvar(g_iEntBarrier, var_rendercolor, Float:{ 0.0, 0.0, 0.0 });
 	set_entvar(g_iEntBarrier, var_renderamt, 150.0);
 
-	set_task(1.0, "task_BuildTime", TASK_BUILDTIME,_, _, "a", g_iBuildTime);
+	set_task_ex(1.0, "BuildTime", TASK_BUILDTIME, .flags = SetTask_RepeatTimes, .repeat = g_iBuildTime);
 	g_iCountTime = (g_iBuildTime-1);
 }
 
-public task_BuildTime(){
+public BuildTime(){
 	
 	g_iCountTime--;
 	
@@ -187,24 +189,20 @@ public task_BuildTime(){
 		if(g_iPrepTime){
 
 			g_bCanBuild = false;
-			set_task(1.0, "task_PrepTime", TASK_PREPTIME,_, _, "a", g_iPrepTime);
+			set_task_ex(1.0, "PrepTime", TASK_PREPTIME, .flags = SetTask_RepeatTimes, .repeat = g_iPrepTime);
 			g_iCountTime = (g_iPrepTime-1);
 
 			client_print_color(0, print_team_default, "^4Люди появились, чтобы проверить свои постройки");
 
 			new iPlayers[MAX_PLAYERS], iPlCount;
 
-			get_players(iPlayers, iPlCount, "h", "CT");
+			get_players_ex(iPlayers, iPlCount, GetPlayers_ExcludeBots|GetPlayers_ExcludeHLTV|GetPlayers_ExcludeDead|GetPlayers_MatchTeam, "CT");
 
 			for(new i, iPlayer; i < iPlCount; i++){
 		
 				iPlayer = iPlayers[i];
-		
-				if(IsAlive(iPlayer) && IsHuman(iPlayer)){
-			
-					CmdGrabStop(iPlayer);//исправляем момент, когда игрок держал блок и его респавнуло с ним на базе
-					rg_round_respawn(iPlayer);
-				}
+				CmdGrabStop(iPlayer);//исправляем момент, когда игрок держал блок и его респавнуло с ним на базе
+				rg_round_respawn(iPlayer);
 			}
 		}	
 		else{
@@ -217,7 +215,7 @@ public task_BuildTime(){
 	return PLUGIN_CONTINUE;
 }
 
-public task_PrepTime(){
+public PrepTime(){
 	
 	g_iCountTime--;
 	
@@ -279,11 +277,11 @@ public CBasePlayer_Killed(iVictim, iKiller){
 		client_print(iVictim, print_center, "Вас заразили! Вы воскресните через %d секунды!", g_fInfectTime);
 		rg_set_user_team(iVictim, TEAM_TERRORIST);
 		IsZombie(iVictim);
-		set_task(g_fInfectTime, "task_Respawn", iVictim+TASK_RESPAWN);
+		set_task_ex(g_fInfectTime, "Respawn", iVictim+TASK_RESPAWN);
 	}
 }
 
-public task_Respawn(id){
+public Respawn(id){
 	
 	id-=TASK_RESPAWN;
 	
