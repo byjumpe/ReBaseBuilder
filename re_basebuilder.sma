@@ -1,8 +1,6 @@
-/* TODO: пили уже классы!!!! */
 /* TODO: сделать возможность блокировать блоки */
 /* TODO: меню оружия для хуманов */
 /* TODO: валюту в отдельном плугине и прочую лабудень */
-/* TODO: никакой поддержки AMX Mod X 1.8.2!!!*/
 
 #pragma semicolon 1
 
@@ -11,6 +9,7 @@
 #include <engine>
 #include <fakemeta>
 #include <reapi>
+#include <re_basebuilder>
 
 #define LockBlock(%1,%2) (entity_set_int(%1, EV_INT_iuser1, %2))
 #define UnlockBlock(%1)  (entity_set_int(%1, EV_INT_iuser1, 0))
@@ -46,6 +45,18 @@ new Float: g_fOffset1[MAX_PLAYERS +1], Float: g_fOffset2[MAX_PLAYERS +1], Float:
 	Float: g_fEntMinDist, Float: g_fEntSetDist, Float: g_fEntMaxDist, Float: g_fEntDist[MAX_PLAYERS +1];
 
 new g_fwPushPull, g_fwGrabEnt_Pre, g_fwGrabEnt_Post, g_fwDropEnt_Pre, g_fwDropEnt_Post, g_fwDummyResult;
+
+new g_iZombieCount;
+new Array: g_ZombieName,
+	Array: g_ZombieInfo,
+	Array: g_ZombieModel,
+	Array: g_ZombieHandModel,
+	Array: g_ZombieHP,
+	Array: g_ZombieSpeed,
+	Array: g_ZombieGravity,
+	Array: g_ZombieKnockback,
+	Array: g_ZombieFlags,
+	Array: g_ZombiePrice;
 
 public plugin_init(){
 	
@@ -85,7 +96,16 @@ public plugin_init(){
 
 public plugin_precache(){
 	
-	//
+	g_ZombieName = ArrayCreate(32, 1);
+	g_ZombieInfo = ArrayCreate(32, 1);
+	g_ZombieModel = ArrayCreate(32, 1);
+	g_ZombieHandModel = ArrayCreate(32, 1);
+	g_ZombieHP = ArrayCreate(1, 1);
+	g_ZombieSpeed = ArrayCreate(1, 1);
+	g_ZombieGravity = ArrayCreate(1, 1);
+	g_ZombieKnockback = ArrayCreate(1, 1);
+	g_ZombieFlags = ArrayCreate(1, 1);
+	g_ZombiePrice = ArrayCreate(1, 1);
 }
 
 public plugin_cfg(){
@@ -95,9 +115,9 @@ public plugin_cfg(){
 	bind_pcvar_num(create_cvar("prep_time", "15", FCVAR_NONE, fmt("%L", LANG_SERVER, "PREP_TIME")), g_iPrepTime);
 	bind_pcvar_float(create_cvar("zombie_respawn_delay", "3.0", FCVAR_NONE, fmt("%L", LANG_SERVER, "ZOMBIE_RESPAWN_DELAY")), g_fZombieTime);
 	bind_pcvar_float(create_cvar("infection_respawn", "5.0", FCVAR_NONE, fmt("%L", LANG_SERVER, "INFECTION_RESPAWN")), g_fInfectTime);
-	bind_pcvar_float(create_cvar("max_move_dist", "768.0", FCVAR_NONE, fmt("%L", LANG_SERVER, "MAX_MOVE_DIST"), 768.0, 768.0), g_fEntMaxDist);
-	bind_pcvar_float(create_cvar("min_move_dist", "32.0", FCVAR_NONE, fmt("%L", LANG_SERVER, "MIN_MOVE_DIST"), 32.0, 32.0), g_fEntMinDist);
-	bind_pcvar_float(create_cvar("min_dist_set", "64.0", FCVAR_NONE, fmt("%L", LANG_SERVER, "MIN_DIST_SET"), 64.0, 64.0), g_fEntSetDist);
+	bind_pcvar_float(create_cvar("max_move_dist", "768.0", FCVAR_NONE, fmt("%L", LANG_SERVER, "MAX_MOVE_DIST"), .has_min = true, .min_val = 768.0, .has_max = true, .max_val = 768.0), g_fEntMaxDist);
+	bind_pcvar_float(create_cvar("min_move_dist", "32.0", FCVAR_NONE, fmt("%L", LANG_SERVER, "MIN_MOVE_DIST"), .has_min = true, .min_val = 32.0, .has_max = true, .max_val = 32.0), g_fEntMinDist);
+	bind_pcvar_float(create_cvar("min_dist_set", "64.0", FCVAR_NONE, fmt("%L", LANG_SERVER, "MIN_DIST_SET"), .has_min = true, .min_val = 64.0, .has_max = true, .max_val = 64.0), g_fEntSetDist);
 
 	set_member_game(m_GameDesc, g_szGameName);
 
@@ -159,7 +179,6 @@ public CSGameRules_RestartRound_Post(){
 	remove_task(TASK_PREPTIME);
 	
 	g_bRoundEnd = false;
-	g_bCanBuild = true;
 	//g_bFreezePlayers = false;
 }
 
@@ -177,6 +196,8 @@ public CSGameRules_OnRoundFreezeEnd(){
 public BuildTime(){
 	
 	g_iCountTime--;
+	
+	g_bCanBuild = true;
 	
 	new iMins = g_iCountTime / 60, iSecs = g_iCountTime % 60;
 	
@@ -269,12 +290,12 @@ public CBasePlayer_Killed(iVictim, iKiller){
 	}/* если убили зомби, выводим мессагу и запускаем воскрешение */
 	if(IsZombie(iVictim)){
 		
-		client_print(iVictim, print_center, "Вы воскресните через %d секунды!", g_fZombieTime);
-		set_task(g_fZombieTime, "task_Respawn", iVictim+TASK_RESPAWN);
+		client_print(iVictim, print_center, "Вы воскресните через %0.f секунды!", g_fZombieTime);
+		set_task_ex(g_fZombieTime, "Respawn", iVictim+TASK_RESPAWN);
 	}/* если убили человека, выводим мессагу и запускаем процесс обращение в зомби и воскрешение */
 	else if(g_fInfectTime){
 		
-		client_print(iVictim, print_center, "Вас заразили! Вы воскресните через %d секунды!", g_fInfectTime);
+		client_print(iVictim, print_center, "Вас заразили! Вы воскресните через %0.f секунды!", g_fInfectTime);
 		rg_set_user_team(iVictim, TEAM_TERRORIST);
 		IsZombie(iVictim);
 		set_task_ex(g_fInfectTime, "Respawn", iVictim+TASK_RESPAWN);
@@ -360,11 +381,14 @@ public fw_CmdStart(id, uc_handle, randseed)
 
 	if(iButton & IN_USE && !(iOldButton & IN_USE) && !g_iOwnedEnt[id]){
 		
+		client_print_color(0, print_team_default, "^4НАЖАЛ!");
 		CmdGrabMove(id);
 	}
 	else if(iOldButton & IN_USE && !(iButton & IN_USE) && g_iOwnedEnt[id]){
 		
+		client_print_color(0, print_team_default, "^4ОТПУСТИЛ!");
 		CmdGrabStop(id);
+
 	}
 	return FMRES_IGNORED;
 }
@@ -373,16 +397,19 @@ public CmdGrabMove(id){
 	
 	if (IsZombie(id)){
 		
+		client_print_color(0, print_team_default, "^4 IsZombie");
 		return PLUGIN_HANDLED;
 	}
 
 	if(!g_bCanBuild){
 		
+		client_print_color(0, print_team_default, "^4 g_bCanBuild");
 		return PLUGIN_HANDLED;
 	}
 	
 	if (g_iOwnedEnt[id] && IsValidEnt(g_iOwnedEnt[id])){
 		
+		client_print_color(0, print_team_default, "^4 g_iOwnedEnt IsValidEnt");
 		CmdGrabStop(id);
 	}
 	
@@ -391,6 +418,7 @@ public CmdGrabMove(id){
 	
 	if (!IsValidEnt(iEnt) || iEnt == g_iEntBarrier || IsAlive(iEnt) || IsMovingEnt(iEnt)){
 		
+		client_print_color(0, print_team_default, "^4 423 строка");
 		return PLUGIN_HANDLED;
 	}
 
@@ -399,6 +427,7 @@ public CmdGrabMove(id){
 	entity_get_string(iEnt, EV_SZ_targetname, szTarget, 6);
 	if (!equal(szClass, "func_wall") || equal(szTarget, "ignore")){
 		
+		client_print_color(0, print_team_default, "^4 !func_wall");
 		return PLUGIN_HANDLED;
 	}
 	
@@ -415,6 +444,7 @@ public CmdGrabMove(id){
 	g_fOffset3[id] = fOrigin[2] - fAiming[2];
 	
 	g_fEntDist[id] = get_user_aiming(id, iEnt, iBody);
+	client_print_color(0, print_team_default, "^4 %d", g_fEntDist[id]);
 		
 	if (g_fEntMinDist)
 	{
@@ -568,5 +598,62 @@ stock rg_set_freeze(const id){
 
 public plugin_natives(){
 
-	register_native("bb_is_user_human", "native_is_user_human", 1);
+	register_native("rebb_register_zombie_class", "native_register_zombie_class", 1);
+}
+
+public native_register_zombie_class(const szName[], const szInfo[], const szModel[], const szHandmodel[], Float:fHealth, Float:fSpeed, Float:fGravity, Float:fKnockback, flags, price){
+
+	ArrayPushString(g_ZombieName, szName);
+	ArrayPushString(g_ZombieInfo, szInfo);
+	ArrayPushString(g_ZombieModel, szModel);
+	ArrayPushString(g_ZombieHandModel, szHandmodel);
+	ArrayPushCell(g_ZombieHP, fHealth);
+	ArrayPushCell(g_ZombieSpeed, fSpeed);
+	ArrayPushCell(g_ZombieGravity, fGravity);
+	ArrayPushCell(g_ZombieKnockback, fKnockback);
+	ArrayPushCell(g_ZombieFlags, flags);
+	ArrayPushCell(g_ZombiePrice, price);
+	
+	new szBuffer[32], Float: fBuffer, szZombieModel[128], szZombieHandModel[64];
+	
+	for(new i; i < ArraySize(g_ZombieName); i++){
+
+		ArrayGetString(g_ZombieName, i, szBuffer, charsmax(szBuffer));
+		ArraySetString(g_ZombieName, g_iZombieCount, szBuffer);
+		
+		ArrayGetString(g_ZombieInfo, i, szBuffer, charsmax(szBuffer));
+		ArraySetString(g_ZombieInfo, g_iZombieCount, szBuffer);
+		
+		ArrayGetString(g_ZombieModel, i, szBuffer, charsmax(szBuffer));
+		ArraySetString(g_ZombieModel, g_iZombieCount, szBuffer);
+		formatex(szZombieModel, charsmax(szZombieModel), "models/player/%s/%s.mdl", szBuffer, szBuffer);
+		precache_model(szZombieModel);
+		
+		ArrayGetString(g_ZombieHandModel, i, szZombieHandModel, charsmax(szZombieHandModel));
+		ArraySetString(g_ZombieHandModel, g_iZombieCount, szBuffer);
+		formatex(szZombieHandModel, charsmax(szZombieHandModel), "models/%s.mdl", szBuffer);
+		precache_model(szZombieHandModel);
+		
+		fBuffer = Float: ArrayGetCell(g_ZombieHP, i);
+		ArraySetCell(g_ZombieHP, g_iZombieCount, fBuffer);
+		
+		fBuffer = Float: ArrayGetCell(g_ZombieSpeed, i);
+		ArraySetCell(g_ZombieSpeed, g_iZombieCount, fBuffer);
+		
+		fBuffer = Float: ArrayGetCell(g_ZombieGravity, i);
+		ArraySetCell(g_ZombieGravity, g_iZombieCount, fBuffer);
+		
+		fBuffer = Float: ArrayGetCell(g_ZombieKnockback, i);
+		ArraySetCell(g_ZombieKnockback, g_iZombieCount, fBuffer);
+		
+		fBuffer = Float: ArrayGetCell(g_ZombieFlags, i);
+		ArraySetCell(g_ZombieFlags, g_iZombieCount, fBuffer);
+		
+		fBuffer = Float: ArrayGetCell(g_ZombiePrice, i);
+		ArraySetCell(g_ZombiePrice, g_iZombieCount, fBuffer);
+	}
+	
+	g_iZombieCount++;
+	
+	return g_iZombieCount-1;
 }
