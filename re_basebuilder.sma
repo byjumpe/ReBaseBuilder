@@ -56,7 +56,7 @@ new Array: g_ZombieName,
 	Array: g_ZombieHP,
 	Array: g_ZombieSpeed,
 	Array: g_ZombieGravity,
-	Array: g_ZombieFlags
+	Array: g_ZombieFlags;
 
 public plugin_init(){
 
@@ -103,9 +103,7 @@ public plugin_precache(){
 	g_ZombieHP = ArrayCreate(1, 1);
 	g_ZombieSpeed = ArrayCreate(1, 1);
 	g_ZombieGravity = ArrayCreate(1, 1);
-	g_ZombieKnockback = ArrayCreate(1, 1);
 	g_ZombieFlags = ArrayCreate(1, 1);
-	g_ZombiePrice = ArrayCreate(1, 1);
 }
 
 public plugin_cfg(){
