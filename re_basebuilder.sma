@@ -98,8 +98,8 @@ public plugin_precache(){
 
 	g_ZombieName = ArrayCreate(32, 1);
 	g_ZombieInfo = ArrayCreate(32, 1);
-	g_ZombieModel = ArrayCreate(32, 1);
-	g_ZombieHandModel = ArrayCreate(32, 1);
+	g_ZombieModel = ArrayCreate(64, 1);
+	g_ZombieHandModel = ArrayCreate(64, 1);
 	g_ZombieHP = ArrayCreate(1, 1);
 	g_ZombieSpeed = ArrayCreate(1, 1);
 	g_ZombieGravity = ArrayCreate(1, 1);
@@ -546,82 +546,79 @@ public CBasePlayer_PreThink(id){
 
 	entity_set_origin(g_iOwnedEnt[id], vMoveTo);
 }
-//игрок жив?
-stock bool: IsAlive(const id){
 
-	return bool: is_user_alive(id);
-}
-//игрок зомби?
-stock bool: IsZombie(const id){
-
-	return bool: (get_member(id, m_iTeam) == TEAM_TERRORIST);
-}
-//игрок человек?
-stock bool: IsHuman(const id){
-
-	return bool: (get_member(id, m_iTeam) == TEAM_CT);
-}
-
-stock bool: IsConnected(const id){
-
-	return bool: is_user_connected(id);
-}
-
-stock TeamName:rg_get_user_team(const id){
-
-	return TeamName:get_member(id, m_iTeam);
-}
 
 public plugin_natives(){
 
-	register_native("rebb_register_zombie_class", "native_register_zombie_class", 1);
+	register_native("rebb_register_zombie_class", "native_register_zombie_class");
+	register_native("rebb_get_class_id", "native_zombie_get_class_id");
 }
 
-public native_register_zombie_class(const szName[], const szInfo[], const szModel[], const szHandmodel[], Float:fHealth, Float:fSpeed, Float:fGravity, flags){
+public native_register_zombie_class(iPlugin, iParams){
 
+	enum { arg_name = 1, arg_info, arg_model, arg_handmodel, arg_health, arg_speed, arg_gravity, arg_flags };
+
+	new szName[32], szInfo[32], szModel[128], szHandmodel[64], Float:fHealth, Float:fSpeed, Float:fGravity, iFlags;
+
+	get_string(arg_name, szName, sizeof(szName));
 	ArrayPushString(g_ZombieName, szName);
+	
+	get_string(arg_info, szInfo, sizeof(szInfo));
 	ArrayPushString(g_ZombieInfo, szInfo);
-	ArrayPushString(g_ZombieModel, szModel);
-	ArrayPushString(g_ZombieHandModel, szHandmodel);
+	
+	get_string(arg_model, szModel, sizeof(szModel)); 
+	_precache_model(g_ZombieModel, szModel, "player");
+	
+	get_string(arg_handmodel, szHandmodel, sizeof(szHandmodel)); 
+	_precache_model(g_ZombieHandModel, szHandmodel, "zombie_hand");
+	
+	fHealth = get_param_f(arg_health);
 	ArrayPushCell(g_ZombieHP, fHealth);
+	
+	fSpeed = get_param_f(arg_speed);
 	ArrayPushCell(g_ZombieSpeed, fSpeed);
+	
+	fGravity = get_param_f(arg_gravity);
 	ArrayPushCell(g_ZombieGravity, fGravity);
-	ArrayPushCell(g_ZombieFlags, flags);
+	
+	iFlags = get_param(arg_flags);
+	ArrayPushCell(g_ZombieFlags, iFlags);
 
-	new szBuffer[32], Float: fBuffer, szZombieModel[128], szZombieHandModel[64];
+	return g_iZombieCount++;
+}
 
-	for(new i; i < ArraySize(g_ZombieName); i++){
+public native_zombie_get_class_id(iPlugin, iParams){
 
-		ArrayGetString(g_ZombieName, i, szBuffer, charsmax(szBuffer));
-		ArraySetString(g_ZombieName, g_iZombieCount, szBuffer);
+	enum { arg_name = 1 };
+	
+	new szName[32];
+	get_string(arg_name, szName, sizeof(szName))
 
-		ArrayGetString(g_ZombieInfo, i, szBuffer, charsmax(szBuffer));
-		ArraySetString(g_ZombieInfo, g_iZombieCount, szBuffer);
+	new szZombieName[32];
+	for(new id = 0; id < g_iZombieCount; id++){
 
-		ArrayGetString(g_ZombieModel, i, szBuffer, charsmax(szBuffer));
-		ArraySetString(g_ZombieModel, g_iZombieCount, szBuffer);
-		formatex(szZombieModel, charsmax(szZombieModel), "models/player/%s/%s.mdl", szBuffer, szBuffer);
-		precache_model(szZombieModel);
+		ArrayGetString(g_ZombieName, id, szZombieName, charsmax(szZombieName))
 
-		ArrayGetString(g_ZombieHandModel, i, szZombieHandModel, charsmax(szZombieHandModel));
-		ArraySetString(g_ZombieHandModel, g_iZombieCount, szBuffer);
-		formatex(szZombieHandModel, charsmax(szZombieHandModel), "models/%s.mdl", szBuffer);
-		precache_model(szZombieHandModel);
+		if(equali(szName, szZombieName)){
 
-		fBuffer = Float: ArrayGetCell(g_ZombieHP, i);
-		ArraySetCell(g_ZombieHP, g_iZombieCount, fBuffer);
-
-		fBuffer = Float: ArrayGetCell(g_ZombieSpeed, i);
-		ArraySetCell(g_ZombieSpeed, g_iZombieCount, fBuffer);
-
-		fBuffer = Float: ArrayGetCell(g_ZombieGravity, i);
-		ArraySetCell(g_ZombieGravity, g_iZombieCount, fBuffer);
-
-		fBuffer = Float: ArrayGetCell(g_ZombieFlags, i);
-		ArraySetCell(g_ZombieFlags, g_iZombieCount, fBuffer);
+			return id;
+		}
 	}
+	return -1;
+}
 
-	g_iZombieCount++;
+public _precache_model(Array:arr, const model[], const path[]){
 
-	return g_iZombieCount-1;
+    static szBuffer[128];
+
+	ArrayPushString(arr, model);
+    if (equal(path, "player")){
+
+	    formatex(szBuffer, sizeof(szBuffer), "models/%s/%s/%s.mdl", path, model, model);
+	}
+    else{
+
+		formatex(szBuffer, sizeof(szBuffer), "models/%s/%s", path, model);
+	}
+    precache_model(szBuffer);
 }
