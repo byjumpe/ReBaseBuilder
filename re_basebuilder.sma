@@ -117,6 +117,8 @@ public plugin_precache(){
 	g_ZombieGravity = ArrayCreate(1, 1);
 	g_ZombieFlags = ArrayCreate(1, 1);
 	
+	g_Forwards[FWD__CLASS_REGISTERED] = CreateMultiForward("rebb_class_registered", ET_IGNORE, FP_CELL, FP_STRING);
+	
 	g_bCanRegister = true;
 	
 	ExecuteForward(CreateMultiForward("rebb_class_reg_request", ET_IGNORE));
@@ -607,6 +609,8 @@ public native_register_zombie_class(iPlugin, iParams){
 	
 	iFlags = get_param(arg_flags);
 	ArrayPushCell(g_ZombieFlags, iFlags);
+
+	ExecuteForward(g_Forwards[FWD__CLASS_REGISTERED], _, g_iZombieCount, szName);
 
 	return g_iZombieCount++;
 }
