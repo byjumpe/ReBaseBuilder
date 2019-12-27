@@ -6,6 +6,8 @@
 /**
  * Called in plugin_precache() to request zombie classes registration.
  *
+ * @note	All classess should registers in this forward
+ *
  * @noreturn
  */
 forward rebb_class_reg_request();
