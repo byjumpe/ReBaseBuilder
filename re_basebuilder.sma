@@ -2,6 +2,10 @@
 /* TODO: меню оружия для хуманов */
 /* TODO: валюту в отдельном плугине и прочую лабудень */
 
+/* TODO: Имя и описание класса нужно будет перевести на МЛ.
+	    Имя будет использоваться как уникальный строковый
+	    идентификатор класса в форварде rebb_class_registered() */
+
 #pragma semicolon 1
 
 #include <amxmodx>
@@ -47,6 +51,14 @@ new Float: g_fOffset1[MAX_PLAYERS +1], Float: g_fOffset2[MAX_PLAYERS +1], Float:
 	Float: g_fEntMinDist, Float: g_fEntSetDist, Float: g_fEntMaxDist, Float: g_fEntDist[MAX_PLAYERS +1];
 
 new g_fwPushPull, g_fwGrabEnt_Pre, g_fwGrabEnt_Post, g_fwDropEnt_Pre, g_fwDropEnt_Post, g_fwDummyResult;
+
+enum FORWARDS_ENUM {
+	FWD__CLASS_REGISTERED
+}
+
+new g_Forwards[FORWARDS_ENUM];
+
+new bool:g_bCanRegister;
 
 new g_iZombieCount;
 new Array: g_ZombieName,
@@ -104,6 +116,16 @@ public plugin_precache(){
 	g_ZombieSpeed = ArrayCreate(1, 1);
 	g_ZombieGravity = ArrayCreate(1, 1);
 	g_ZombieFlags = ArrayCreate(1, 1);
+	
+	g_Forwards[FWD__CLASS_REGISTERED] = CreateMultiForward("rebb_class_registered", ET_IGNORE, FP_CELL, FP_STRING);
+	
+	g_bCanRegister = true;
+	
+	ExecuteForward(CreateMultiForward("rebb_class_reg_request", ET_IGNORE));
+	
+	if(!g_iZombieCount) {
+		set_fail_state("No zombie class registered!");
+	}
 }
 
 public plugin_cfg(){
@@ -558,6 +580,10 @@ public native_register_zombie_class(iPlugin, iParams){
 
 	enum { arg_name = 1, arg_info, arg_model, arg_handmodel, arg_health, arg_speed, arg_gravity, arg_flags };
 
+	if(!g_bCanRegister) {
+		return -1;
+	}
+
 	new szName[32], szInfo[32], szModel[128], szHandmodel[64], Float:fHealth, Float:fSpeed, Float:fGravity, iFlags;
 
 	get_string(arg_name, szName, sizeof(szName));
@@ -583,6 +609,8 @@ public native_register_zombie_class(iPlugin, iParams){
 	
 	iFlags = get_param(arg_flags);
 	ArrayPushCell(g_ZombieFlags, iFlags);
+
+	ExecuteForward(g_Forwards[FWD__CLASS_REGISTERED], _, g_iZombieCount, szName);
 
 	return g_iZombieCount++;
 }
