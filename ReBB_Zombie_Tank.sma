@@ -2,8 +2,10 @@
 #include <reapi>
 #include <re_basebuilder>
 
+// TODO: Change to ML keys
 new const ZombieName[] = { "ТАНК" };
 new const ZombieInfo[] = { "Много HP" };
+
 new const ZombieModel[] = { "rebb_tank" };
 new const ZombieHandModel[] = { "v_rebb_tank" };
 const Float: ZombieHP = 5000.0;
@@ -13,7 +15,7 @@ const ZombieFlags = ADMIN_ALL
 
 const TANK_ARMOR = 100;
 
-public plugin_precache(){
+public rebb_class_reg_request(){
 
 	register_plugin("[ReBB] Zombie Tank", "0.1", "ReBB");
 
