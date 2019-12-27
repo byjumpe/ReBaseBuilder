@@ -4,6 +4,13 @@
 #define _re_basebuilder_included
 
 /**
+ * Called in plugin_precache() to request zombie classes registration.
+ *
+ * @noreturn
+ */
+forward rebb_class_reg_request();
+
+/**
  * Registers a custom class which will be added to the zombie classes menu of ReBB.
  *
  * Note: The returned zombie class ID can be later used to identify
