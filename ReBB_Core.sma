@@ -43,7 +43,7 @@ enum (+= 100){
 enum _:XYZ { Float:X, Float:Y, Float:Z };
 
 new TeamName:g_iTeam[MAX_PLAYERS +1], g_iBuildTime, g_iPrepTime, g_iCountTime, Float: g_fZombieTime, 
-	Float: g_fInfectTime, g_szGameName[32], g_iEntBarrier, g_iOwnedEnt[MAX_PLAYERS +1];
+	Float: g_fInfectTime, g_szGameName[32], g_iEntBarrier, g_iOwnedEnt[MAX_PLAYERS +1], g_iZombieClass[MAX_PLAYERS +1];
 
 new bool: g_bFirstSpawn[MAX_PLAYERS +1], bool: g_bRoundEnd, bool: g_bCanBuild;
 
@@ -77,6 +77,8 @@ public plugin_init(){
 
 	register_clcmd("+grab",	"CmdGrabMove");
 	register_clcmd("-grab",	"CmdGrabStop");
+	register_clcmd("say /zm", "Zombie_Menu");
+	register_clcmd("say_team /zm", "Zombie_Menu");
 
 	set_cvar_num("mp_buytime", 0);//блокировка покупки
 	set_cvar_num("mp_roundover", 1);//завершаем раунд, даже если нет цели на карте, чтобы давать очки людям, за то что продержались
@@ -123,7 +125,8 @@ public plugin_precache(){
 	
 	ExecuteForward(CreateMultiForward("rebb_class_reg_request", ET_IGNORE));
 	
-	if(!g_iZombieCount) {
+	if(!g_iZombieCount){
+
 		set_fail_state("No zombie class registered!");
 	}
 }
@@ -146,7 +149,8 @@ public plugin_cfg(){
 
 public client_putinserver(id){
 
-	//
+	g_bFirstSpawn[id] = true;
+	g_iZombieClass[id] = 0;
 }
 
 public client_disconnected(id){
@@ -272,6 +276,47 @@ public PrepTime(){
 	return PLUGIN_CONTINUE;
 }
 
+public Zombie_Menu(id){
+
+	new iMenu = menu_create("Zombie Menu", "Zombie_Menu_Handler");
+
+	new szName[32], szInfo[32], iFlag;
+	for(new i = 0; i < g_iZombieCount; i++){
+
+		ArrayGetString(g_ZombieName, i, szName, sizeof(szName));
+		ArrayGetString(g_ZombieInfo, i, szInfo, sizeof(szInfo));
+		iFlag = ArrayGetCell(g_ZombieFlags, i);
+		
+		if(iFlag == ADMIN_ALL){
+
+			menu_additem(iMenu, fmt("\w%s \r%s", szName, szInfo));
+		}
+		else{
+
+			menu_additem(iMenu, fmt("\w%s \r%s \y%s", szName, szInfo, iFlag == ADMIN_ALL ? "" : "[VIP]"), .paccess = iFlag);
+		}
+	}
+	menu_setprop(iMenu, MPROP_EXIT, MEXIT_ALL);
+	menu_display(id, iMenu, 0);
+	
+	return PLUGIN_HANDLED;
+}
+
+public Zombie_Menu_Handler(id, menu, item){
+
+	if(item == MENU_EXIT){
+
+		menu_destroy(menu);
+		return PLUGIN_HANDLED;
+	}
+	
+	client_print_color(id, print_team_default, "item = %d", item);
+	
+	menu_destroy(menu);
+	
+	return PLUGIN_HANDLED;
+}
+
 public CBasePlayer_Spawn(id){
 
 	if(g_iTeam[id] == TEAM_UNASSIGNED){
@@ -288,6 +333,7 @@ public CBasePlayer_Spawn(id){
 		if(g_bFirstSpawn[id]){
 
 			//здесь открытие меню выбора классов
+			Zombie_Menu(id);
 			g_bFirstSpawn[id] = false;
 		}
 		//rg_remove_items_by_slot(id, C4_SLOT);
@@ -579,74 +625,56 @@ public plugin_natives(){
 public native_register_zombie_class(iPlugin, iParams){
 
 	enum { arg_name = 1, arg_info, arg_model, arg_handmodel, arg_health, arg_speed, arg_gravity, arg_flags };
+	
+	if(!g_bCanRegister){
 
-	if(!g_bCanRegister) {
 		return -1;
 	}
-
 	new szName[32], szInfo[32], szModel[128], szHandmodel[64], Float:fHealth, Float:fSpeed, Float:fGravity, iFlags;
 
 	get_string(arg_name, szName, sizeof(szName));
 	ArrayPushString(g_ZombieName, szName);
-	
+
 	get_string(arg_info, szInfo, sizeof(szInfo));
 	ArrayPushString(g_ZombieInfo, szInfo);
-	
+
 	get_string(arg_model, szModel, sizeof(szModel)); 
 	_precache_model(g_ZombieModel, szModel, "player");
-	
+
 	get_string(arg_handmodel, szHandmodel, sizeof(szHandmodel)); 
 	_precache_model(g_ZombieHandModel, szHandmodel, "zombie_hand");
-	
+
 	fHealth = get_param_f(arg_health);
 	ArrayPushCell(g_ZombieHP, fHealth);
-	
+
 	fSpeed = get_param_f(arg_speed);
 	ArrayPushCell(g_ZombieSpeed, fSpeed);
-	
+
 	fGravity = get_param_f(arg_gravity);
 	ArrayPushCell(g_ZombieGravity, fGravity);
-	
+
 	iFlags = get_param(arg_flags);
 	ArrayPushCell(g_ZombieFlags, iFlags);
-
+	
 	ExecuteForward(g_Forwards[FWD__CLASS_REGISTERED], _, g_iZombieCount, szName);
 
 	return g_iZombieCount++;
 }
 
-public native_zombie_get_class_id(iPlugin, iParams){
-
-	enum { arg_name = 1 };
-	
-	new szName[32];
-	get_string(arg_name, szName, sizeof(szName))
-
-	new szZombieName[32];
-	for(new id = 0; id < g_iZombieCount; id++){
-
-		ArrayGetString(g_ZombieName, id, szZombieName, charsmax(szZombieName))
-
-		if(equali(szName, szZombieName)){
-
-			return id;
-		}
-	}
-	return -1;
-}
-
 public _precache_model(Array:arr, const model[], const path[]){
 
-    static szBuffer[128];
+	static szBuffer[128];
 
 	ArrayPushString(arr, model);
-    if (equal(path, "player")){
+	if(equal(path, "player")){
 
-	    formatex(szBuffer, sizeof(szBuffer), "models/%s/%s/%s.mdl", path, model, model);
+		formatex(szBuffer, sizeof(szBuffer), "models/%s/%s/%s.mdl", path, model, model);
 	}
-    else{
+	else{
 
-		formatex(szBuffer, sizeof(szBuffer), "models/%s/%s", path, model);
+		formatex(szBuffer, sizeof(szBuffer), "models/%s/%s.mdl", path, model);
 	}
-    precache_model(szBuffer);
+	precache_model(szBuffer);
 }
+
+public native_zombie_get_class_id(id) return g_iZombieClass[id];

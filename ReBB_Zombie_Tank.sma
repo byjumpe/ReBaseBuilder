@@ -23,7 +23,8 @@ public rebb_class_reg_request(){
 
 	g_Class_Tank = rebb_register_zombie_class(ZombieName, ZombieInfo, ZombieModel, ZombieHandModel, ZombieHP, ZombieSpeed, ZombieGravity, ZombieFlags);
 	
-	if(g_Class_Tank == -1) {
+	if(g_Class_Tank == -1){
+		
 		set_fail_state("Wrong registration chain!");
 	}
 }
