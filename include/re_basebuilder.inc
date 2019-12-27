@@ -13,6 +13,16 @@
 forward rebb_class_reg_request();
 
 /**
+ * Called to announce zombie class registration.
+ *
+ * @param iRegClassId		Class registration index.
+ * @param szName		Class name.
+ *
+ * @noreturn
+ */
+forward rebb_class_registered(iRegClassId, const szName[]);
+
+/**
  * Registers a custom class which will be added to the zombie classes menu of ReBB.
  *
  * Note: The returned zombie class ID can be later used to identify
