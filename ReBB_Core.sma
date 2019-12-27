@@ -11,6 +11,7 @@
 #include <amxmodx>
 #include <amxmisc>
 #include <engine>
+#include <hamsandwich>
 #include <fakemeta>
 #include <reapi>
 #include <re_basebuilder>
@@ -28,6 +29,14 @@
 
 #define OBJECT_PUSHPULLRATE 4.0
 
+#define PlayerTask(%1)          (%1 + TASK_HEALTH)
+#define GetPlayerByTaskID(%1)   (%1 - TASK_HEALTH)
+
+enum Color { R, G, B };
+
+const Float:MAX_HOLDTIME        = 20.0;
+new g_iHudColor[Color]          = { 255, 0, 0 };
+
 new const VERSION[] = "0.1.1 Alpha";
 
 enum (+= 100){
@@ -43,7 +52,8 @@ enum (+= 100){
 enum _:XYZ { Float:X, Float:Y, Float:Z };
 
 new TeamName:g_iTeam[MAX_PLAYERS +1], g_iBuildTime, g_iPrepTime, g_iCountTime, Float: g_fZombieTime, 
-	Float: g_fInfectTime, g_szGameName[32], g_iEntBarrier, g_iOwnedEnt[MAX_PLAYERS +1], g_iZombieClass[MAX_PLAYERS +1];
+	Float: g_fInfectTime, g_szGameName[32], g_iEntBarrier, g_iOwnedEnt[MAX_PLAYERS +1], g_iZombieClass[MAX_PLAYERS +1],
+	g_szModel[128], g_iSyncPlayerHud;
 
 new bool: g_bFirstSpawn[MAX_PLAYERS +1], bool: g_bRoundEnd, bool: g_bCanBuild;
 
@@ -52,7 +62,8 @@ new Float: g_fOffset1[MAX_PLAYERS +1], Float: g_fOffset2[MAX_PLAYERS +1], Float:
 
 new g_fwPushPull, g_fwGrabEnt_Pre, g_fwGrabEnt_Post, g_fwDropEnt_Pre, g_fwDropEnt_Post, g_fwDummyResult;
 
-enum FORWARDS_ENUM {
+enum FORWARDS_ENUM{
+
 	FWD__CLASS_REGISTERED
 }
 
@@ -84,9 +95,13 @@ public plugin_init(){
 	set_cvar_num("mp_roundover", 1);//завершаем раунд, даже если нет цели на карте, чтобы давать очки людям, за то что продержались
 
 	g_iEntBarrier = find_ent_by_tname(-1, "barrier");
+	
+	g_iSyncPlayerHud = CreateHudSyncObj();
 
 	register_message(get_user_msgid("SendAudio"), "Msg_SendAudio");
 	set_msg_block(get_user_msgid("ClCorpse"), BLOCK_SET);//трупы изчезают
+	
+	register_event("Health", "Event_Health", "be", "1>0");
 
 	register_forward(FM_CmdStart, "fw_CmdStart");
 
@@ -100,12 +115,15 @@ public plugin_init(){
 	RegisterHookChain(RG_CSGameRules_RestartRound, "CSGameRules_RestartRound_Pre", false);
 	RegisterHookChain(RG_CSGameRules_RestartRound, "CSGameRules_RestartRound_Post", true);
 	RegisterHookChain(RG_CBasePlayer_DropPlayerItem, "CBasePlayer_DropPlayerItem_Pre", false);
-	RegisterHookChain(RG_CBasePlayer_Spawn, "CBasePlayer_Spawn", true);
+	RegisterHookChain(RG_CBasePlayer_Spawn, "CBasePlayer_Spawn_Post", true);
 	RegisterHookChain(RG_CSGameRules_OnRoundFreezeEnd, "CSGameRules_OnRoundFreezeEnd", true);
 	RegisterHookChain(RG_CBasePlayer_Killed, "CBasePlayer_Killed", true);
 	RegisterHookChain(RG_CBasePlayer_PreThink, "CBasePlayer_PreThink");
 	RegisterHookChain(RG_CSGameRules_DeadPlayerWeapons, "CSGameRules_DeadPlayerWeapons", false);
-	//RegisterHookChain(RG_CBasePlayer_SetClientUserInfoModel, "CBasePlayer_SetClientUserInfoModel", false);
+	RegisterHookChain(RG_CBasePlayer_SetClientUserInfoModel, "CBasePlayer_SetClientUserInfoModel", false);
+	
+	RegisterHam(Ham_Item_Deploy, "weapon_knife", "Ham_Item_Deploy_Post", true);
+
 }
 
 public plugin_precache(){
@@ -151,6 +169,8 @@ public client_putinserver(id){
 
 	g_bFirstSpawn[id] = true;
 	g_iZombieClass[id] = 0;
+	rg_reset_user_model(id, true);
+	remove_task(PlayerTask(id));
 }
 
 public client_disconnected(id){
@@ -158,6 +178,7 @@ public client_disconnected(id){
 	g_iTeam[id] = TEAM_UNASSIGNED;
 
 	remove_task(id+TASK_RESPAWN);//обнуляем респавн
+	remove_task(PlayerTask(id));
 }
 
 public CBasePlayer_DropPlayerItem_Pre(const id){
@@ -311,13 +332,18 @@ public Zombie_Menu_Handler(id, menu, item){
 	}
 	
 	client_print_color(id, print_team_default, "item = %d", item);
+	g_iZombieClass[id] = item;
+	if(IsZombie(id)){
+		
+		rg_round_respawn(id);
+	}
 	
 	menu_destroy(menu);
 	
 	return PLUGIN_HANDLED;
 }
 
-public CBasePlayer_Spawn(id){
+public CBasePlayer_Spawn_Post(id){
 
 	if(g_iTeam[id] == TEAM_UNASSIGNED){
 
@@ -328,18 +354,94 @@ public CBasePlayer_Spawn(id){
 
 		return;
 	}
+	
+	rg_remove_all_items(id);
+	rg_give_item(id, "weapon_knife");
+	
 	if(IsZombie(id)){
 
 		if(g_bFirstSpawn[id]){
 
-			//здесь открытие меню выбора классов
 			Zombie_Menu(id);
 			g_bFirstSpawn[id] = false;
 		}
-		//rg_remove_items_by_slot(id, C4_SLOT);
-		rg_remove_all_items(id); //забираем всё оружие у зомби
-		rg_give_item(id, "weapon_knife"); //выдаём зомби нож
+		
+		set_entvar(id, var_health, Float:ArrayGetCell(g_ZombieHP, g_iZombieClass[id]));
+		set_entvar(id, var_maxspeed, Float:ArrayGetCell(g_ZombieSpeed, g_iZombieClass[id]));
+		set_entvar(id, var_gravity, Float:ArrayGetCell(g_ZombieGravity, g_iZombieClass[id]));
+
+		ArrayGetString(g_ZombieModel, g_iZombieClass[id], g_szModel, charsmax(g_szModel));
+		rg_set_user_model(id, g_szModel, true);
 	}
+	if(IsHuman(id)){
+	
+		rg_reset_maxspeed(id);
+		rg_reset_user_model(id, true);
+	}
+	
+	//FixHealthMsgSend(id);
+	set_task_ex(MAX_HOLDTIME, "taskPlayerHud", PlayerTask(id), .flags = SetTask_Repeat);
+}
+
+public CBasePlayer_SetClientUserInfoModel(const id, infobuffer[], szNewModel[]){
+
+	if(IsZombie(id)){
+
+		SetHookChainArg(3, ATYPE_STRING, g_szModel);
+	}
+}
+
+public Ham_Item_Deploy_Post(weapon){
+
+	if(pev_valid(weapon) != 2)
+		return HAM_IGNORED;
+	
+	new id = get_pdata_cbase(weapon, 41, 4);
+	
+	if(IsZombie(id)){
+
+		new szHandmodel[64];
+		ArrayGetString(g_ZombieHandModel, g_iZombieClass[id], szHandmodel, charsmax(szHandmodel));
+		format(szHandmodel, sizeof(szHandmodel), "models/zombie_hand/%s.mdl", szHandmodel);
+		set_pev(id, pev_viewmodel2, szHandmodel);
+		client_print_color(id, print_team_default, "%s", szHandmodel);
+		set_pev(id, pev_weaponmodel2, "");
+	}
+	if(IsHuman(id)){
+
+		set_pev(id, pev_viewmodel2, "models/v_knife.mdl");
+		set_pev(id, pev_weaponmodel2, "models/p_knife.mdl");
+	}
+
+	return HAM_IGNORED;
+
+}
+
+public taskPlayerHud(iTaskId){
+
+	UpdateHUD(GetPlayerByTaskID(iTaskId));
+}
+
+public Event_Health(id){
+
+	UpdateHUD(id);
+}
+/*
+FixHealthMsgSend(pPlayer)
+{
+    static gmsgHealth;
+    if(gmsgHealth > 0 || (gmsgHealth = get_user_msgid("Health")))
+    {
+        emessage_begin(MSG_ONE, gmsgHealth, .player = pPlayer);
+        ewrite_byte(get_user_health(pPlayer));
+        emessage_end();
+    }
+}
+*/
+UpdateHUD(pPlayer){
+
+	set_hudmessage(g_iHudColor[R], g_iHudColor[G], g_iHudColor[B], 0.02, 0.95, .holdtime = MAX_HOLDTIME, .channel = next_hudchannel(pPlayer));
+	ShowSyncHudMsg(pPlayer, g_iSyncPlayerHud, "[%0.f HP]", Float:get_entvar(pPlayer, var_health));
 }
 
 public CBasePlayer_Killed(iVictim, iKiller){
@@ -364,6 +466,11 @@ public CBasePlayer_Killed(iVictim, iKiller){
 		rg_set_user_team(iVictim, TEAM_TERRORIST);
 		IsZombie(iVictim);
 		set_task_ex(g_fInfectTime, "Respawn", iVictim+TASK_RESPAWN);
+	}
+	if(task_exists(PlayerTask(iVictim))){
+
+		remove_task(PlayerTask(iVictim));
+		ClearSyncHud(iVictim, g_iSyncPlayerHud);
 	}
 }
 
