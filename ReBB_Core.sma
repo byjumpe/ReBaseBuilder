@@ -6,6 +6,25 @@
 	    Имя будет использоваться как уникальный строковый
 	    идентификатор класса в форварде rebb_class_registered() */
 
+/* ============================================================ */
+/* 
+ReBB:
+
+	Jumper (https://dev-cs.ru/members/299/)
+	BlackSignature (https://dev-cs.ru/members/1111/)
+	d3m37r4 (https://dev-cs.ru/members/64/)
+
+Thx for the tests:
+
+	NoNameNPC (https://dev-cs.ru/members/5792/)
+
+Thx for the mod idea and original code
+
+	Tirant - Creator/Founder/Base Builder God
+
+*/	
+/* ============================================================ */	
+		
 #pragma semicolon 1
 
 #include <amxmodx>
@@ -83,7 +102,7 @@ new Array: g_ZombieName,
 
 public plugin_init(){
 
-	register_plugin("[ReAPI] Base Builder", VERSION, "Jumper");
+	register_plugin("[ReAPI] Base Builder", VERSION, "ReBB");
 	register_cvar("re_basebuilder", VERSION, FCVAR_SERVER|FCVAR_SPONLY|FCVAR_UNLOGGED);
 
 	register_clcmd("+grab",	"CmdGrabMove");

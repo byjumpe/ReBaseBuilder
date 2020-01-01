@@ -25,7 +25,7 @@ public rebb_class_reg_request(){
 	
 	if(g_Class_Tank == -1){
 		
-		set_fail_state("Wrong registration chain!");
+		set_fail_state("[ReBB] Zombie Tank: Wrong registration chain!");
 	}
 }
 

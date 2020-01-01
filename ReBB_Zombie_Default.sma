@@ -15,7 +15,7 @@ const ZombieFlags = ADMIN_ALL
 
 new g_Class_Default;
 
-public plugin_precache(){
+public rebb_class_reg_request(){
 
 	register_plugin("[ReBB] Zombie Default", "0.1", "ReBB");
 
@@ -23,7 +23,7 @@ public plugin_precache(){
 	
 	if(g_Class_Default == -1){
 		
-		set_fail_state("Wrong registration chain!");
+		set_fail_state("[ReBB] Zombie Default: Wrong registration chain!");
 	}
 }
 
