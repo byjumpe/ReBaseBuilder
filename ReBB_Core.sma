@@ -56,7 +56,7 @@ enum Color { R, G, B };
 const Float:MAX_HOLDTIME        = 20.0;
 new g_iHudColor[Color]          = { 255, 0, 0 };
 
-new const VERSION[] = "0.1.1 Alpha";
+new const VERSION[] = "0.1.2 Alpha";
 
 enum (+= 100){
 
@@ -99,6 +99,8 @@ new Array: g_ZombieName,
 	Array: g_ZombieSpeed,
 	Array: g_ZombieGravity,
 	Array: g_ZombieFlags;
+
+#define getCvarDesc(%0) fmt("%L", LANG_SERVER, %0)
 
 public plugin_init(){
 
@@ -143,6 +145,11 @@ public plugin_init(){
 	
 	RegisterHam(Ham_Item_Deploy, "weapon_knife", "Ham_Item_Deploy_Post", true);
 
+	RegisterCvars();
+
+	AutoExecConfig(true, "ReBaseBuilder");
+
+	set_member_game(m_GameDesc, g_szGameName);
 }
 
 public plugin_precache(){
@@ -169,19 +176,6 @@ public plugin_precache(){
 }
 
 public plugin_cfg(){
-
-	bind_pcvar_string(create_cvar("game_name", "ReBaseBuilder", FCVAR_NONE, fmt("%L", LANG_SERVER, "GAME_NAME")), g_szGameName, charsmax(g_szGameName));
-	bind_pcvar_num(create_cvar("build_time", "15", FCVAR_NONE, fmt("%L", LANG_SERVER, "BUILD_TIME")), g_iBuildTime);
-	bind_pcvar_num(create_cvar("prep_time", "15", FCVAR_NONE, fmt("%L", LANG_SERVER, "PREP_TIME")), g_iPrepTime);
-	bind_pcvar_float(create_cvar("zombie_respawn_delay", "3.0", FCVAR_NONE, fmt("%L", LANG_SERVER, "ZOMBIE_RESPAWN_DELAY")), g_fZombieTime);
-	bind_pcvar_float(create_cvar("infection_respawn", "5.0", FCVAR_NONE, fmt("%L", LANG_SERVER, "INFECTION_RESPAWN")), g_fInfectTime);
-	bind_pcvar_float(create_cvar("max_move_dist", "768.0", FCVAR_NONE, fmt("%L", LANG_SERVER, "MAX_MOVE_DIST"), .has_min = true, .min_val = 768.0, .has_max = true, .max_val = 768.0), g_fEntMaxDist);
-	bind_pcvar_float(create_cvar("min_move_dist", "32.0", FCVAR_NONE, fmt("%L", LANG_SERVER, "MIN_MOVE_DIST"), .has_min = true, .min_val = 32.0, .has_max = true, .max_val = 32.0), g_fEntMinDist);
-	bind_pcvar_float(create_cvar("min_dist_set", "64.0", FCVAR_NONE, fmt("%L", LANG_SERVER, "MIN_DIST_SET"), .has_min = true, .min_val = 64.0, .has_max = true, .max_val = 64.0), g_fEntSetDist);
-
-	set_member_game(m_GameDesc, g_szGameName);
-
-	AutoExecConfig(true, "ReBaseBuilder");
 }
 
 public client_putinserver(id){
@@ -804,3 +798,82 @@ public _precache_model(Array:arr, const model[], const path[]){
 }
 
 public native_zombie_get_class_id(id) return g_iZombieClass[id];
+
+RegisterCvars() {
+	bind_pcvar_string(
+		create_cvar(
+			.name = "game_name", 
+			.string = "ReBaseBuilder", 
+			.flags = FCVAR_NONE, 
+			.description = getCvarDesc("GAME_NAME")
+		), g_szGameName, charsmax(g_szGameName)
+	);
+	bind_pcvar_num(
+		create_cvar(
+			.name = "build_time", 
+			.string = "15", 
+			.flags = FCVAR_NONE, 
+			.description = getCvarDesc("BUILD_TIME")
+		), g_iBuildTime
+	);
+	bind_pcvar_num(
+		create_cvar(
+			.name = "prep_time", 
+			.string = "15", 
+			.flags = FCVAR_NONE, 
+			.description = getCvarDesc("PREP_TIME")
+		), g_iPrepTime
+	);
+	bind_pcvar_float(
+		create_cvar(
+			.name = "zombie_respawn_delay", 
+			.string = "3.0", 
+			.flags = FCVAR_NONE, 
+			.description = getCvarDesc("ZOMBIE_RESPAWN_DELAY")
+		), g_fZombieTime
+	);
+	bind_pcvar_float(
+		create_cvar(
+			.name = "infection_respawn", 
+			.string = "5.0", 
+			.flags = FCVAR_NONE, 
+			.description = getCvarDesc("INFECTION_RESPAWN")
+		), g_fInfectTime
+	);
+	bind_pcvar_float(
+		create_cvar(
+			.name = "max_move_dist", 
+			.string = "768.0", 
+			.flags = FCVAR_NONE, 
+			.description = getCvarDesc("MAX_MOVE_DIST"), 
+			.has_min = true, 
+			.min_val = 768.0, 
+			.has_max = true, 
+			.max_val = 768.0
+		), g_fEntMaxDist
+	);
+	bind_pcvar_float(
+		create_cvar(
+			.name = "min_move_dist", 
+			.string = "32.0", 
+			.flags = FCVAR_NONE, 
+			.description = getCvarDesc("MIN_MOVE_DIST"), 
+			.has_min = true, 
+			.min_val = 32.0, 
+			.has_max = true, 
+			.max_val = 32.0
+		), g_fEntMinDist
+	);
+	bind_pcvar_float(
+		create_cvar(
+			.name = "min_dist_set", 
+			.string = "64.0", 
+			.flags = FCVAR_NONE, 
+			.description = getCvarDesc("MIN_DIST_SET"), 
+			.has_min = true, 
+			.min_val = 64.0, 
+			.has_max = true, 
+			.max_val = 64.0
+		), g_fEntSetDist
+	); 
+}
