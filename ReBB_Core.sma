@@ -31,7 +31,6 @@ Thx for the mod idea and original code
 #include <amxmisc>
 #include <engine>
 #include <hamsandwich>
-#include <fakemeta>
 #include <reapi>
 #include <re_basebuilder>
 
@@ -124,8 +123,6 @@ public plugin_init(){
 	
 	register_event("Health", "Event_Health", "be", "1>0");
 
-	register_forward(FM_CmdStart, "fw_CmdStart");
-
 	g_fwPushPull = CreateMultiForward("bb_block_pushpull", ET_IGNORE, FP_CELL, FP_CELL, FP_CELL);
 	g_fwGrabEnt_Pre = CreateMultiForward("bb_grab_pre", ET_IGNORE, FP_CELL, FP_CELL);
 	g_fwGrabEnt_Post = CreateMultiForward("bb_grab_post", ET_IGNORE, FP_CELL, FP_CELL);
@@ -141,7 +138,7 @@ public plugin_init(){
 	RegisterHookChain(RG_CBasePlayer_Killed, "CBasePlayer_Killed", true);
 	RegisterHookChain(RG_CBasePlayer_PreThink, "CBasePlayer_PreThink");
 	RegisterHookChain(RG_CSGameRules_DeadPlayerWeapons, "CSGameRules_DeadPlayerWeapons", false);
-	RegisterHookChain(RG_CBasePlayer_SetClientUserInfoModel, "CBasePlayer_SetClientUserInfoModel", false);
+	RegisterHookChain(RG_PM_Move, "PM_Move_Pre", false);
 	
 	RegisterHam(Ham_Item_Deploy, "weapon_knife", "Ham_Item_Deploy_Post", true);
 
@@ -344,8 +341,12 @@ public Zombie_Menu_Handler(id, menu, item){
 		return PLUGIN_HANDLED;
 	}
 	
-	client_print_color(id, print_team_default, "item = %d", item);
 	g_iZombieClass[id] = item;
+
+	new szName[32];
+	ArrayGetString(g_ZombieName, item, szName, sizeof(szName));
+	client_print_color(id, print_team_default, "^1Вы выбрали класс зомби: ^4%s", szName);
+
 	if(IsZombie(id)){
 		
 		rg_round_respawn(id);
@@ -391,43 +392,27 @@ public CBasePlayer_Spawn_Post(id){
 		rg_reset_maxspeed(id);
 		rg_reset_user_model(id, true);
 	}
-	
-	//FixHealthMsgSend(id);
 	set_task_ex(MAX_HOLDTIME, "taskPlayerHud", PlayerTask(id), .flags = SetTask_Repeat);
-}
-
-public CBasePlayer_SetClientUserInfoModel(const id, infobuffer[], szNewModel[]){
-
-	if(IsZombie(id)){
-
-		SetHookChainArg(3, ATYPE_STRING, g_szModel);
-	}
 }
 
 public Ham_Item_Deploy_Post(weapon){
 
-	if(pev_valid(weapon) != 2)
+	new id = get_member(weapon, m_pPlayer);
+
+	if(!IsConnected(id)){
+
 		return HAM_IGNORED;
-	
-	new id = get_pdata_cbase(weapon, 41, 4);
-	
+	}
+
 	if(IsZombie(id)){
 
 		new szHandmodel[64];
 		ArrayGetString(g_ZombieHandModel, g_iZombieClass[id], szHandmodel, charsmax(szHandmodel));
 		format(szHandmodel, sizeof(szHandmodel), "models/zombie_hand/%s.mdl", szHandmodel);
-		set_pev(id, pev_viewmodel2, szHandmodel);
-		client_print_color(id, print_team_default, "%s", szHandmodel);
-		set_pev(id, pev_weaponmodel2, "");
+		set_entvar(id, var_viewmodel, szHandmodel);
+		set_entvar(id, var_weaponmodel, "");
 	}
-	if(IsHuman(id)){
-
-		set_pev(id, pev_viewmodel2, "models/v_knife.mdl");
-		set_pev(id, pev_weaponmodel2, "models/p_knife.mdl");
-	}
-
 	return HAM_IGNORED;
-
 }
 
 public taskPlayerHud(iTaskId){
@@ -439,18 +424,7 @@ public Event_Health(id){
 
 	UpdateHUD(id);
 }
-/*
-FixHealthMsgSend(pPlayer)
-{
-    static gmsgHealth;
-    if(gmsgHealth > 0 || (gmsgHealth = get_user_msgid("Health")))
-    {
-        emessage_begin(MSG_ONE, gmsgHealth, .player = pPlayer);
-        ewrite_byte(get_user_health(pPlayer));
-        emessage_end();
-    }
-}
-*/
+
 UpdateHUD(pPlayer){
 
 	set_hudmessage(g_iHudColor[R], g_iHudColor[G], g_iHudColor[B], 0.02, 0.95, .holdtime = MAX_HOLDTIME, .channel = next_hudchannel(pPlayer));
@@ -551,14 +525,15 @@ public Release_Zombies(){
 	//rg_send_audio(0, VOICE_VICTORY[random_num(0, 1)]);
 	client_print_color(0, print_team_default, "^4ЗОМБИ ВЫШЛИ НА ОХОТУ!");
 }
-public fw_CmdStart(id, uc_handle, randseed){
+
+public PM_Move_Pre(id){
 
 	if(!IsAlive(id)){
 
-		return FMRES_IGNORED;
+		return HC_CONTINUE;
 	}
 
-	new iButton = get_ucmd(uc_handle, ucmd_buttons);
+	new iButton = get_entvar(id, var_button);
 	new iOldButton = get_entvar(id, var_oldbuttons);
 
 	if(iButton & IN_USE && !(iOldButton & IN_USE) && !g_iOwnedEnt[id]){
@@ -569,7 +544,7 @@ public fw_CmdStart(id, uc_handle, randseed){
 
 		CmdGrabStop(id);
 	}
-	return FMRES_IGNORED;
+	return HC_CONTINUE;
 }
 
 public CmdGrabMove(id){
