@@ -402,12 +402,12 @@ public PM_Move_Pre(id) {
         return HC_CONTINUE;
     }
 
-    new buttom = get_entvar(id, var_button);
+    new button = get_entvar(id, var_button);
     new oldbutton = get_entvar(id, var_oldbuttons);
 
-    if(buttom & IN_USE && ~oldbutton & IN_USE && !g_iOwnedEnt[id]) {
+    if(button & IN_USE && ~oldbutton & IN_USE && !g_iOwnedEnt[id]) {
         CmdGrabMove(id);
-    } else if(oldbutton & IN_USE && ~buttom & IN_USE && g_iOwnedEnt[id]) {
+    } else if(oldbutton & IN_USE && ~button & IN_USE && g_iOwnedEnt[id]) {
         CmdGrabStop(id);
     }
 
