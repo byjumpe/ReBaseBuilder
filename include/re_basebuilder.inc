@@ -50,7 +50,7 @@ native rebb_register_zombie_class(const szName[], const szInfo[], const szModel[
  * @return			Internal zombie class ID, or -1 if not yet chosen.
  */
 
-native rebb_register_zombie_class(id);
+native rebb_get_class_id(id);
 
 //игрок жив?
 stock bool: IsAlive(const id){
