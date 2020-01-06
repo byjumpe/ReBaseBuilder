@@ -3,28 +3,28 @@
 /* TODO: валюту в отдельном плугине и прочую лабудень */
 
 /* TODO: Имя и описание класса нужно будет перевести на МЛ.
-	    Имя будет использоваться как уникальный строковый
-	    идентификатор класса в форварде rebb_class_registered() */
+        Имя будет использоваться как уникальный строковый
+        идентификатор класса в форварде rebb_class_registered() */
 
 /* ============================================================ */
 /* 
 ReBB:
 
-	Jumper (https://dev-cs.ru/members/299/)
-	BlackSignature (https://dev-cs.ru/members/1111/)
-	d3m37r4 (https://dev-cs.ru/members/64/)
+    Jumper (https://dev-cs.ru/members/299/)
+    BlackSignature (https://dev-cs.ru/members/1111/)
+    d3m37r4 (https://dev-cs.ru/members/64/)
 
 Thx for the tests:
 
-	NoNameNPC (https://dev-cs.ru/members/5792/)
+    NoNameNPC (https://dev-cs.ru/members/5792/)
 
 Thx for the mod idea and original code
 
-	Tirant - Creator/Founder/Base Builder God
+    Tirant - Creator/Founder/Base Builder God
 
-*/	
-/* ============================================================ */	
-		
+*/    
+/* ============================================================ */    
+        
 #pragma semicolon 1
 
 #include <amxmodx>
@@ -33,822 +33,777 @@ Thx for the mod idea and original code
 #include <hamsandwich>
 #include <reapi>
 #include <re_basebuilder>
+//#include <xs>
 
-#define LockBlock(%1,%2) (set_entvar(%1, var_iuser1, %2))
-#define UnlockBlock(%1)  (set_entvar(%1, var_iuser1, 0))
-#define BlockLocker(%1)  (get_entvar(%1, var_iuser1))
+//#define AUTO_CFG                                  // Автосоздание конфига 
 
-#define MovingEnt(%1)   (set_entvar(%1, var_iuser2, 1))
-#define UnmovingEnt(%1) (set_entvar(%1, var_iuser2, 0))
-#define IsMovingEnt(%1) (get_entvar(%1, var_iuser2) == 1)
+new const VERSION[] = "0.1.6 Alpha";
 
-#define SetEntMover(%1,%2)  (set_entvar(%1, var_iuser3, %2))
-#define UnsetEntMover(%1)   (set_entvar(%1, var_iuser3, 0))
+#define MAX_BUFFER_INFO 128
 
-#define OBJECT_PUSHPULLRATE 4.0
+const Float:MAX_MOVE_DISTANCE = 768.0;
+const Float:MIN_MOVE_DISTANCE = 32.0;
+const Float:MIN_DIST_SET = 64.0;
 
-#define PlayerTask(%1)          (%1 + TASK_HEALTH)
-#define GetPlayerByTaskID(%1)   (%1 - TASK_HEALTH)
+const Float:OBJECT_PUSHPULLRATE     = 4.0;
+const Float:MAX_HOLDTIME            = 20.0;
 
-enum Color { R, G, B };
+enum COLOR { R, G, B };
+enum any:POS { Float:X, Float:Y, Float:Z };
 
-const Float:MAX_HOLDTIME        = 20.0;
-new g_iHudColor[Color]          = { 255, 0, 0 };
-
-new const VERSION[] = "0.1.2 Alpha";
-
-enum (+= 100){
-
-	TASK_BUILDTIME = 100,
-	TASK_PREPTIME,
-	TASK_MODELSET,
-	TASK_RESPAWN,
-	TASK_HEALTH,
-	TASK_IDLESOUND
+enum (+= 100) {
+    TASK_BUILDTIME = 100,
+    TASK_PREPTIME,
+    TASK_MODELSET,
+    TASK_RESPAWN,
+    TASK_HEALTH,
+    TASK_IDLESOUND
 };
 
-enum _:XYZ { Float:X, Float:Y, Float:Z };
+enum any:CVAR_LIST {
+    GAME_NAME[MAX_NAME_LENGTH],
+    BUILDING_TIME,
+    PREPARATION_TIME,
+    Float:ZOMBIE_RESPAWN_DELAY,
+    Float:INFECTION_RESPAWN_DELAY
+};
 
-new TeamName:g_iTeam[MAX_PLAYERS +1], g_iBuildTime, g_iPrepTime, g_iCountTime, Float: g_fZombieTime, 
-	Float: g_fInfectTime, g_szGameName[32], g_iEntBarrier, g_iOwnedEnt[MAX_PLAYERS +1], g_iZombieClass[MAX_PLAYERS +1],
-	g_szModel[128], g_iSyncPlayerHud;
+enum any:MULTYPLAY_CVARS {
+    MP_BUYTIME,
+    MP_ROUNDOVER,
+    MP_ITEM_STAYTIME
+};
 
+enum FORWARDS_LIST {
+    FWD_CLASS_REG_REQUEST,
+    FWD_CLASS_REGISTERED,
+    FWD_PUSH_PULL,
+    FWD_GRAB_ENTITY_PRE,
+    FWD_GRAB_ENTITY_POST,
+    FWD_DROP_ENTITY_PRE,
+    FWD_DROP_ENTITY_POST 
+};
+
+new const g_HudColor[COLOR] = { 255, 0, 0 };
+new const g_MpCvars[MULTYPLAY_CVARS][] = {
+    "mp_buytime",
+    "mp_roundover",
+    "mp_item_staytime"
+};
+
+new g_Pointer[MULTYPLAY_CVARS];
+new g_Forward[FORWARDS_LIST];
+new g_FwdReturn;
+
+new g_Cvar[CVAR_LIST];
+
+new g_BarrierEnt;
+
+new Float: g_fEntDist[MAX_PLAYERS +1];
+new TeamName:g_iTeam[MAX_PLAYERS +1], g_iCountTime, g_iOwnedEnt[MAX_PLAYERS +1], g_iZombieClass[MAX_PLAYERS +1], g_szModel[128];
 new bool: g_bFirstSpawn[MAX_PLAYERS +1], bool: g_bRoundEnd, bool: g_bCanBuild;
-
-new Float: g_fOffset1[MAX_PLAYERS +1], Float: g_fOffset2[MAX_PLAYERS +1], Float: g_fOffset3[MAX_PLAYERS +1], 
-	Float: g_fEntMinDist, Float: g_fEntSetDist, Float: g_fEntMaxDist, Float: g_fEntDist[MAX_PLAYERS +1];
-
-new g_fwPushPull, g_fwGrabEnt_Pre, g_fwGrabEnt_Post, g_fwDropEnt_Pre, g_fwDropEnt_Post, g_fwDummyResult;
-
-enum FORWARDS_ENUM{
-
-	FWD__CLASS_REGISTERED
-}
-
-new g_Forwards[FORWARDS_ENUM];
+new Float: g_fOffset1[MAX_PLAYERS +1], Float: g_fOffset2[MAX_PLAYERS +1], Float: g_fOffset3[MAX_PLAYERS +1];
 
 new bool:g_bCanRegister;
 
-new g_iZombieCount;
-new Array: g_ZombieName,
-	Array: g_ZombieInfo,
-	Array: g_ZombieModel,
-	Array: g_ZombieHandModel,
-	Array: g_ZombieHP,
-	Array: g_ZombieSpeed,
-	Array: g_ZombieGravity,
-	Array: g_ZombieFlags;
+new Array: g_ZombieName;
+new Array: g_ZombieInfo;
+new Array: g_ZombieModel;
+new Array: g_ZombieHandModel;
+new Array: g_ZombieHP;
+new Array: g_ZombieSpeed;
+new Array: g_ZombieGravity;
+new Array: g_ZombieFlags;
+new g_ClassesCount;
 
-#define getCvarDesc(%0) fmt("%L", LANG_SERVER, %0)
+new g_SyncHud;
 
-public plugin_init(){
+#define LockBlock(%1,%2)            (set_entvar(%1, var_iuser1, %2))
+#define UnlockBlock(%1)             (set_entvar(%1, var_iuser1, 0))
+#define BlockLocker(%1)             (get_entvar(%1, var_iuser1))
 
-	register_plugin("[ReAPI] Base Builder", VERSION, "ReBB");
-	register_cvar("re_basebuilder", VERSION, FCVAR_SERVER|FCVAR_SPONLY|FCVAR_UNLOGGED);
+#define MovingEnt(%1)               (set_entvar(%1, var_iuser2, 1))
+#define UnmovingEnt(%1)             (set_entvar(%1, var_iuser2, 0))
+#define IsMovingEnt(%1)             (get_entvar(%1, var_iuser2) == 1)
 
-	register_clcmd("+grab",	"CmdGrabMove");
-	register_clcmd("-grab",	"CmdGrabStop");
-	register_clcmd("say /zm", "Zombie_Menu");
-	register_clcmd("say_team /zm", "Zombie_Menu");
+#define SetEntMover(%1,%2)          (set_entvar(%1, var_iuser3, %2))
+#define UnsetEntMover(%1)           (set_entvar(%1, var_iuser3, 0))
 
-	set_cvar_num("mp_buytime", 0);//блокировка покупки
-	set_cvar_num("mp_roundover", 1);//завершаем раунд, даже если нет цели на карте, чтобы давать очки людям, за то что продержались
+#define PlayerTask(%1)              (%1 + TASK_HEALTH)
+#define GetPlayerByTaskID(%1)       (%1 - TASK_HEALTH)
 
-	g_iEntBarrier = find_ent_by_tname(-1, "barrier");
-	
-	g_iSyncPlayerHud = CreateHudSyncObj();
+#define IsValidTeam(%1)             (TEAM_TERRORIST <= get_member(%1, m_iTeam) <= TEAM_CT)
+#define GetCvarDesc(%0)             fmt("%L", LANG_SERVER, %0)
 
-	register_message(get_user_msgid("SendAudio"), "Msg_SendAudio");
-	set_msg_block(get_user_msgid("ClCorpse"), BLOCK_SET);//трупы изчезают
-	
-	register_event("Health", "Event_Health", "be", "1>0");
+public plugin_precache() {
+    RegisterCoreForwards();
 
-	g_fwPushPull = CreateMultiForward("bb_block_pushpull", ET_IGNORE, FP_CELL, FP_CELL, FP_CELL);
-	g_fwGrabEnt_Pre = CreateMultiForward("bb_grab_pre", ET_IGNORE, FP_CELL, FP_CELL);
-	g_fwGrabEnt_Post = CreateMultiForward("bb_grab_post", ET_IGNORE, FP_CELL, FP_CELL);
-	g_fwDropEnt_Pre = CreateMultiForward("bb_drop_pre", ET_IGNORE, FP_CELL, FP_CELL);
-	g_fwDropEnt_Post = CreateMultiForward("bb_drop_post", ET_IGNORE, FP_CELL, FP_CELL);
-
-	RegisterHookChain(RG_RoundEnd, "RG_Round_End", true);
-	RegisterHookChain(RG_CSGameRules_RestartRound, "CSGameRules_RestartRound_Pre", false);
-	RegisterHookChain(RG_CSGameRules_RestartRound, "CSGameRules_RestartRound_Post", true);
-	RegisterHookChain(RG_CBasePlayer_DropPlayerItem, "CBasePlayer_DropPlayerItem_Pre", false);
-	RegisterHookChain(RG_CBasePlayer_Spawn, "CBasePlayer_Spawn_Post", true);
-	RegisterHookChain(RG_CSGameRules_OnRoundFreezeEnd, "CSGameRules_OnRoundFreezeEnd", true);
-	RegisterHookChain(RG_CBasePlayer_Killed, "CBasePlayer_Killed", true);
-	RegisterHookChain(RG_CBasePlayer_PreThink, "CBasePlayer_PreThink");
-	RegisterHookChain(RG_CSGameRules_DeadPlayerWeapons, "CSGameRules_DeadPlayerWeapons", false);
-	RegisterHookChain(RG_PM_Move, "PM_Move_Pre", false);
-	
-	RegisterHam(Ham_Item_Deploy, "weapon_knife", "Ham_Item_Deploy_Post", true);
-
-	RegisterCvars();
-
-	AutoExecConfig(true, "ReBaseBuilder");
-
-	set_member_game(m_GameDesc, g_szGameName);
+    g_ZombieName = ArrayCreate(32, 1);
+    g_ZombieInfo = ArrayCreate(32, 1);
+    g_ZombieModel = ArrayCreate(64, 1);
+    g_ZombieHandModel = ArrayCreate(64, 1);
+    g_ZombieHP = ArrayCreate(1, 1);
+    g_ZombieSpeed = ArrayCreate(1, 1);
+    g_ZombieGravity = ArrayCreate(1, 1);
+    g_ZombieFlags = ArrayCreate(1, 1);
+    
+    g_bCanRegister = true;
+    
+    ExecuteForward(g_Forward[FWD_CLASS_REG_REQUEST], g_FwdReturn);
+    
+    if(!g_ClassesCount) {
+        set_fail_state("Registered zombie classes not found!");
+    }
 }
 
-public plugin_precache(){
+public plugin_init() {
+    register_plugin("[ReAPI] Base Builder", VERSION, "ReBB");
 
-	g_ZombieName = ArrayCreate(32, 1);
-	g_ZombieInfo = ArrayCreate(32, 1);
-	g_ZombieModel = ArrayCreate(64, 1);
-	g_ZombieHandModel = ArrayCreate(64, 1);
-	g_ZombieHP = ArrayCreate(1, 1);
-	g_ZombieSpeed = ArrayCreate(1, 1);
-	g_ZombieGravity = ArrayCreate(1, 1);
-	g_ZombieFlags = ArrayCreate(1, 1);
-	
-	g_Forwards[FWD__CLASS_REGISTERED] = CreateMultiForward("rebb_class_registered", ET_IGNORE, FP_CELL, FP_STRING);
-	
-	g_bCanRegister = true;
-	
-	ExecuteForward(CreateMultiForward("rebb_class_reg_request", ET_IGNORE));
-	
-	if(!g_iZombieCount){
+    register_clcmd("say /zm", "Zombie_Menu");
+    register_clcmd("say_team /zm", "Zombie_Menu");
 
-		set_fail_state("No zombie class registered!");
-	}
+    register_message(get_user_msgid("SendAudio"), "Msg_SendAudio");
+    register_event("Health", "Event_Health", "be", "1>0");
+
+    RegisterForwards();
+    RegisterCvars();
+
+#if defined AUTO_CFG  
+    AutoExecConfig(true, "ReBaseBuilder");
+#endif
+
+    set_member_game(m_GameDesc, g_Cvar[GAME_NAME]);
+    set_msg_block(get_user_msgid("ClCorpse"), BLOCK_SET);
+
+    g_SyncHud = CreateHudSyncObj();
+    g_BarrierEnt = find_ent_by_tname(NULLENT, "barrier");
+    //g_BarrierEnt = FindEntity("func_wall", "barrier");
+
+    if(is_nullent(g_BarrierEnt)) {
+        set_fail_state("Barrier is not found!");
+    }
 }
 
-public plugin_cfg(){
+public plugin_cfg() {
+    GetCvarsPointers();
+    SetCvarsValues();
 }
 
-public client_putinserver(id){
+public client_putinserver(id) {
 
-	g_bFirstSpawn[id] = true;
-	g_iZombieClass[id] = 0;
-	rg_reset_user_model(id, true);
-	remove_task(PlayerTask(id));
+    g_bFirstSpawn[id] = true;
+    g_iZombieClass[id] = 0;
+    rg_reset_user_model(id, true);
+    remove_task(PlayerTask(id));
 }
 
-public client_disconnected(id){
+public client_disconnected(id) {
+    g_iTeam[id] = TEAM_UNASSIGNED;
 
-	g_iTeam[id] = TEAM_UNASSIGNED;
-
-	remove_task(id+TASK_RESPAWN);//обнуляем респавн
-	remove_task(PlayerTask(id));
+    remove_task(id+TASK_RESPAWN);   //обнуляем респавн
+    remove_task(PlayerTask(id));
 }
 
-public CBasePlayer_DropPlayerItem_Pre(const id){
-
-	client_printex(id, print_center, "#Weapon_Cannot_Be_Dropped");
-	SetHookChainReturn(ATYPE_INTEGER, 1);
-	return HC_SUPERCEDE;
+public Round_End_Post(WinStatus:status, ScenarioEventEndRound:event) {
+    switch(event) {
+        case ROUND_CTS_WIN: {
+            g_bRoundEnd = true;
+            client_print(0, print_center, "ЛЮДИ ПОБЕДИЛИ!");
+            //rg_send_audio(0, VOICE_VICTORY[random_num(0, 1)]);
+        }
+        case ROUND_TERRORISTS_WIN: {
+            g_bRoundEnd = true;
+            client_print(0, print_center, "ЗОМБИ ПОБЕДИЛИ!");
+            //rg_send_audio(0, VOICE_VICTORY[random_num(2, 3)]);
+        }
+        case ROUND_GAME_OVER: {
+            g_bRoundEnd = true;
+            rg_update_teamscores(1, 0, true);
+            client_print(0, print_center, "ЛЮДИ ПОБЕДИЛИ!");
+            //rg_send_audio(0, VOICE_VICTORY[random_num(0, 1)]);
+        }
+    }
 }
 
-public CSGameRules_DeadPlayerWeapons(id){
+public CSGameRules_RestartRound_Pre() {
+    if(g_bRoundEnd) {
+        new players[MAX_PLAYERS], count;
+        get_players_ex(players, count, GetPlayers_ExcludeBots|GetPlayers_ExcludeHLTV);
 
-	SetHookChainReturn(ATYPE_INTEGER, GR_PLR_DROP_GUN_NO);//оружия с умерших не дропается, избегаем возможность когда зомби смогут поднять его
-	return HC_SUPERCEDE;
+        for(new i, player; i < count; i++) {
+            player = players[i];
+            // переделать
+            if(g_iTeam[player] && IsValidTeam(player)){
+                rg_set_user_team(player, g_iTeam[player] == TEAM_TERRORIST ? TEAM_CT : TEAM_TERRORIST); //свапаем тимы, с учётом их прошлых команд
+            }
+        }
+
+        arrayset(_:g_iTeam, 0, sizeof(g_iTeam));
+    }
 }
 
-public CSGameRules_RestartRound_Pre(){
+public CSGameRules_RestartRound_Post() {
+    remove_task(TASK_RESPAWN);
+    remove_task(TASK_BUILDTIME);
+    remove_task(TASK_PREPTIME);
 
-	if(g_bRoundEnd){
+    g_bRoundEnd = false;
 
-		new iPlayers[MAX_PLAYERS], iPlCount;
+    //ставим барьер 
+    set_entvar(g_BarrierEnt, var_solid, SOLID_BSP);
+    set_entvar(g_BarrierEnt, var_rendermode, kRenderTransColor);
+    set_entvar(g_BarrierEnt, var_rendercolor, Float:{ 0.0, 0.0, 0.0 });
+    set_entvar(g_BarrierEnt, var_renderamt, 150.0);
 
-		get_players_ex(iPlayers, iPlCount, GetPlayers_ExcludeBots|GetPlayers_ExcludeHLTV);
-
-		for(new i, iPlayer, TeamName:iTeamToSet; i < iPlCount; i++){
-
-			iPlayer = iPlayers[i];
-
-			if(g_iTeam[iPlayer] && (TEAM_SPECTATOR > rg_get_user_team(iPlayer) > TEAM_UNASSIGNED)){
-
-				iTeamToSet = (g_iTeam[iPlayer] == TEAM_TERRORIST ? TEAM_CT : TEAM_TERRORIST);
-
-				rg_set_user_team(iPlayer, iTeamToSet);//свапаем тимы, с учётом их прошлых команд
-			}
-		}
-		arrayset(_:g_iTeam, 0, sizeof(g_iTeam));
-	}
+    set_task_ex(1.0, "BuildTime", TASK_BUILDTIME, .flags = SetTask_RepeatTimes, .repeat = g_Cvar[BUILDING_TIME]);
+    g_iCountTime = g_Cvar[BUILDING_TIME] - 1;    
 }
 
-public CSGameRules_RestartRound_Post(){
-
-	remove_task(TASK_RESPAWN);
-	remove_task(TASK_BUILDTIME);
-	remove_task(TASK_PREPTIME);
-
-	g_bRoundEnd = false;
+public CBasePlayer_DropPlayerItem_Pre(const id) {
+    client_printex(id, print_center, "#Weapon_Cannot_Be_Dropped");
+    SetHookChainReturn(ATYPE_INTEGER, 1);
+    return HC_SUPERCEDE;
 }
 
-public CSGameRules_OnRoundFreezeEnd(){
-	/* ставим барьер */
-	set_entvar(g_iEntBarrier, var_solid, SOLID_BSP);
-	set_entvar(g_iEntBarrier, var_rendermode, kRenderTransColor);
-	set_entvar(g_iEntBarrier, var_rendercolor, Float:{ 0.0, 0.0, 0.0 });
-	set_entvar(g_iEntBarrier, var_renderamt, 150.0);
+public CBasePlayer_Spawn_Post(id) {
+    if(g_iTeam[id] == TEAM_UNASSIGNED) {
+        g_iTeam[id] = get_member(id, m_iTeam);
+    }
 
-	set_task_ex(1.0, "BuildTime", TASK_BUILDTIME, .flags = SetTask_RepeatTimes, .repeat = g_iBuildTime);
-	g_iCountTime = (g_iBuildTime-1);
+    if(!IsAlive(id)) {
+        return;
+    }
+    
+    // Переделать по-человечески. в AddItem блокировать все итемы, кроме ножа.
+    rg_remove_all_items(id);
+    rg_give_item(id, "weapon_knife");
+    
+    if(IsZombie(id)) {
+        if(g_bFirstSpawn[id]) {
+            Zombie_Menu(id);
+            g_bFirstSpawn[id] = false;
+        }
+        
+        set_entvar(id, var_health, Float:ArrayGetCell(g_ZombieHP, g_iZombieClass[id]));
+        // проверить, мб не работает и нужно выставлять скорость через хук resetmaxspeed
+        set_entvar(id, var_maxspeed, Float:ArrayGetCell(g_ZombieSpeed, g_iZombieClass[id]));
+        set_entvar(id, var_gravity, Float:ArrayGetCell(g_ZombieGravity, g_iZombieClass[id]));
+
+        ArrayGetString(g_ZombieModel, g_iZombieClass[id], g_szModel, charsmax(g_szModel));
+        rg_set_user_model(id, g_szModel, true);
+    }
+
+    if(IsHuman(id)) {
+        rg_reset_maxspeed(id);
+        rg_reset_user_model(id, true);
+    }
+    
+    set_task_ex(MAX_HOLDTIME, "taskPlayerHud", PlayerTask(id), .flags = SetTask_Repeat);
 }
 
-public BuildTime(){
+/*public CSGameRules_OnRoundFreezeEnd() {
+    //ставим барьер 
+    set_entvar(g_BarrierEnt, var_solid, SOLID_BSP);
+    set_entvar(g_BarrierEnt, var_rendermode, kRenderTransColor);
+    set_entvar(g_BarrierEnt, var_rendercolor, Float:{ 0.0, 0.0, 0.0 });
+    set_entvar(g_BarrierEnt, var_renderamt, 150.0);
 
-	g_iCountTime--;
+    set_task_ex(1.0, "BuildTime", TASK_BUILDTIME, .flags = SetTask_RepeatTimes, .repeat = g_Cvar[BUILDING_TIME]);
+    g_iCountTime = g_Cvar[BUILDING_TIME] - 1;
+}*/
 
-	g_bCanBuild = true;
+public CBasePlayer_Killed(iVictim, iKiller) {
+    if(!IsConnected(iKiller)) {
+        return;
+    }
 
-	new iMins = g_iCountTime / 60, iSecs = g_iCountTime % 60;
-
-	if(g_iCountTime >= 0){
-
-		client_print(0, print_center, "До конца стройки: %d:%s%d", iMins, (iSecs < 10 ? "0" : ""), iSecs);
-	}
-	else{
-
-		if(g_iPrepTime){
-
-			g_bCanBuild = false;
-			set_task_ex(1.0, "PrepTime", TASK_PREPTIME, .flags = SetTask_RepeatTimes, .repeat = g_iPrepTime);
-			g_iCountTime = (g_iPrepTime-1);
-
-			client_print_color(0, print_team_default, "^4Люди появились, чтобы проверить свои постройки");
-
-			new iPlayers[MAX_PLAYERS], iPlCount;
-
-			get_players_ex(iPlayers, iPlCount, GetPlayers_ExcludeBots|GetPlayers_ExcludeHLTV|GetPlayers_ExcludeDead|GetPlayers_MatchTeam, "CT");
-
-			for(new i, iPlayer; i < iPlCount; i++){
-
-				iPlayer = iPlayers[i];
-				CmdGrabStop(iPlayer);//исправляем момент, когда игрок держал блок и его респавнуло с ним на базе
-				rg_round_respawn(iPlayer);
-			}
-		}	
-		else{
-
-			Release_Zombies();
-		}
-		remove_task(TASK_BUILDTIME);
-		return PLUGIN_HANDLED;
-	}
-	return PLUGIN_CONTINUE;
+    /* если убийцей является зомби, выводим сообщение о заражение с именем того, кого заразили */
+    /* все проверки именно тут, ибо зомби может себя кильнуть, а потом не воскренусть */
+    /* а также чтобы люди себя не киляли и не становились зомби */
+    if(IsZombie(iKiller) && iVictim != iKiller && rg_get_user_team(iVictim) != rg_get_user_team(iKiller)) {
+        client_print(0, print_center, "Инфекция теперь в крови игрока: %n", iVictim);
+    }/* если убили зомби, выводим мессагу и запускаем воскрешение */
+    if(IsZombie(iVictim)) {
+        client_print(iVictim, print_center, "Вы воскреснете через %0.f секунды!", g_Cvar[ZOMBIE_RESPAWN_DELAY]);
+        set_task_ex(g_Cvar[ZOMBIE_RESPAWN_DELAY], "Respawn", iVictim+TASK_RESPAWN);
+    }/* если убили человека, выводим мессагу и запускаем процесс обращение в зомби и воскрешение */
+    else if(g_Cvar[INFECTION_RESPAWN_DELAY]) {
+        client_print(iVictim, print_center, "Вас заразили! Вы воскресните через %0.f секунды!", g_Cvar[INFECTION_RESPAWN_DELAY]);
+        rg_set_user_team(iVictim, TEAM_TERRORIST);
+        IsZombie(iVictim);
+        set_task_ex(g_Cvar[INFECTION_RESPAWN_DELAY], "Respawn", iVictim+TASK_RESPAWN);
+    }
+    if(task_exists(PlayerTask(iVictim))) {
+        remove_task(PlayerTask(iVictim));
+        ClearSyncHud(iVictim, g_SyncHud);
+    }
 }
 
-public PrepTime(){
+// перенести в player_move или наоборот всё закинуть в пресинк
+public CBasePlayer_PreThink(id) {
+    if(!IsAlive(id)) {
+        CmdGrabStop(id);
+        return;
+    }
 
-	g_iCountTime--;
+    if(!g_iOwnedEnt[id] || !is_entity(g_iOwnedEnt[id])) {
+        return;
+    }
 
-	if(g_iCountTime >= 0){
+    new iButton = get_entvar(id, var_button);
+    if(iButton & IN_ATTACK) {
+        g_fEntDist[id] += OBJECT_PUSHPULLRATE;
 
-		client_print(0, print_center, "До конца подготовки: 0:%s%d", (g_iCountTime < 10 ? "0" : ""), g_iCountTime);
-	}/* выпускаем зомби по истечению таймера */
-	if (g_iCountTime == 0){
+        if(g_fEntDist[id] > MAX_MOVE_DISTANCE) {
+            g_fEntDist[id] = MAX_MOVE_DISTANCE;
+            client_print(id, print_center, "Достигнута максимальная дистанция");
+        } else {
+            client_print(id, print_center, "Отталкиваем...");
+        }
 
-		Release_Zombies();
-		remove_task(TASK_PREPTIME);
-		return PLUGIN_HANDLED;
-	}
-	return PLUGIN_CONTINUE;
+        ExecuteForward(g_Forward[FWD_PUSH_PULL], g_FwdReturn, id, g_iOwnedEnt[id], 1);
+    } else if (iButton & IN_ATTACK2) {
+        g_fEntDist[id] -= OBJECT_PUSHPULLRATE;
+
+        if(g_fEntDist[id] < MIN_DIST_SET) {
+            g_fEntDist[id] = MIN_DIST_SET;
+            client_print(id, print_center, "Достигнута минимальная дистанция");
+        } else {
+            client_print(id, print_center, "Притягиваем...");
+        }
+
+        ExecuteForward(g_Forward[FWD_PUSH_PULL], g_FwdReturn, id, g_iOwnedEnt[id], 2);
+    }
+
+    new iOrigin[POS], iLook[POS], Float:fOrigin[POS], Float:fLook[POS], Float:vMoveTo[POS], Float:fLength;
+
+    get_user_origin(id, iOrigin, Origin_Eyes);
+    IVecFVec(iOrigin, fOrigin);
+    get_user_origin(id, iLook, Origin_AimEndEyes);
+    IVecFVec(iLook, fLook);
+
+    fLength = get_distance_f(fLook, fOrigin);
+
+    if(fLength == 0.0) {
+        fLength = 1.0;
+    }
+
+    vMoveTo[X] = (fOrigin[X] + (fLook[X] - fOrigin[X]) * g_fEntDist[id] / fLength) + g_fOffset1[id];
+    vMoveTo[Y] = (fOrigin[Y] + (fLook[Y] - fOrigin[Y]) * g_fEntDist[id] / fLength) + g_fOffset2[id];
+    vMoveTo[Z] = (fOrigin[Z] + (fLook[Z] - fOrigin[Z]) * g_fEntDist[id] / fLength) + g_fOffset3[id];
+    vMoveTo[Z] -= floatfract(vMoveTo[Z]);
+
+    entity_set_origin(g_iOwnedEnt[id], vMoveTo);
+}
+
+public PM_Move_Pre(id) {
+    if(!IsAlive(id)) {
+        return HC_CONTINUE;
+    }
+
+    new buttom = get_entvar(id, var_button);
+    new oldbutton = get_entvar(id, var_oldbuttons);
+
+    if(buttom & IN_USE && ~oldbutton & IN_USE && !g_iOwnedEnt[id]) {
+        CmdGrabMove(id);
+    } else if(oldbutton & IN_USE && ~buttom & IN_USE && g_iOwnedEnt[id]) {
+        CmdGrabStop(id);
+    }
+
+    return HC_CONTINUE;
+}
+
+public Ham_Item_Deploy_Post(weapon) {
+    new id = get_member(weapon, m_pPlayer);
+    if(!IsConnected(id)) {
+        return HAM_IGNORED;
+    }
+
+    if(IsZombie(id)) {
+        new szHandmodel[64];
+        ArrayGetString(g_ZombieHandModel, g_iZombieClass[id], szHandmodel, charsmax(szHandmodel));
+        format(szHandmodel, sizeof(szHandmodel), "models/zombie_hand/%s.mdl", szHandmodel);
+        set_entvar(id, var_viewmodel, szHandmodel);
+        set_entvar(id, var_weaponmodel, "");
+    }
+
+    return HAM_IGNORED;
+}
+
+public BuildTime() {
+
+    g_iCountTime--;
+
+    g_bCanBuild = true;
+
+    new iMins = g_iCountTime / 60, iSecs = g_iCountTime % 60;
+
+    if(g_iCountTime >= 0){
+
+        client_print(0, print_center, "До конца стройки: %d:%s%d", iMins, (iSecs < 10 ? "0" : ""), iSecs);
+    } else {
+        if(g_Cvar[PREPARATION_TIME]) {
+            g_bCanBuild = false;
+            set_task_ex(1.0, "PrepTime", TASK_PREPTIME, .flags = SetTask_RepeatTimes, .repeat = g_Cvar[PREPARATION_TIME]);
+            g_iCountTime = (g_Cvar[PREPARATION_TIME] - 1);
+
+            client_print_color(0, print_team_default, "^4Люди появились, чтобы проверить свои постройки");
+
+            new iPlayers[MAX_PLAYERS], iPlCount;
+            get_players_ex(iPlayers, iPlCount, GetPlayers_ExcludeBots|GetPlayers_ExcludeHLTV|GetPlayers_ExcludeDead|GetPlayers_MatchTeam, "CT");
+
+            for(new i, iPlayer; i < iPlCount; i++) {
+                iPlayer = iPlayers[i];
+                CmdGrabStop(iPlayer);//исправляем момент, когда игрок держал блок и его респавнуло с ним на базе
+                rg_round_respawn(iPlayer);
+            }
+        } else{
+            Release_Zombies();
+        }
+
+        remove_task(TASK_BUILDTIME);
+        return PLUGIN_HANDLED;
+    }
+    return PLUGIN_CONTINUE;
+}
+
+public PrepTime() {
+    g_iCountTime--;
+
+    if(g_iCountTime >= 0) {
+        client_print(0, print_center, "До конца подготовки: 0:%s%d", (g_iCountTime < 10 ? "0" : ""), g_iCountTime);
+    }/* выпускаем зомби по истечению таймера */
+    
+    if(g_iCountTime == 0) {
+        Release_Zombies();
+        remove_task(TASK_PREPTIME);
+
+        return PLUGIN_HANDLED;
+    }
+
+    return PLUGIN_CONTINUE;
 }
 
 public Zombie_Menu(id){
+    new menu = menu_create("Zombie Menu", "Zombie_Menu_Handler");
 
-	new iMenu = menu_create("Zombie Menu", "Zombie_Menu_Handler");
+    for(new i, name[MAX_NAME_LENGTH], info[32], flag; i < g_ClassesCount; i++) {
+        ArrayGetString(g_ZombieName, i, name, sizeof(name));
+        ArrayGetString(g_ZombieInfo, i, info, sizeof(info));
+        flag = ArrayGetCell(g_ZombieFlags, i);
+        
+        if(flag == ADMIN_ALL) {
+            menu_additem(menu, fmt("\w%s \r%s", name, info));
+        } else{
+            menu_additem(menu, fmt("\w%s \r%s \y%s", name, info, flag == ADMIN_ALL ? "" : "[VIP]"), .paccess = flag);
+        }
+    }
 
-	new szName[32], szInfo[32], iFlag;
-	for(new i = 0; i < g_iZombieCount; i++){
-
-		ArrayGetString(g_ZombieName, i, szName, sizeof(szName));
-		ArrayGetString(g_ZombieInfo, i, szInfo, sizeof(szInfo));
-		iFlag = ArrayGetCell(g_ZombieFlags, i);
-		
-		if(iFlag == ADMIN_ALL){
-
-			menu_additem(iMenu, fmt("\w%s \r%s", szName, szInfo));
-		}
-		else{
-
-			menu_additem(iMenu, fmt("\w%s \r%s \y%s", szName, szInfo, iFlag == ADMIN_ALL ? "" : "[VIP]"), .paccess = iFlag);
-		}
-	}
-	menu_setprop(iMenu, MPROP_EXIT, MEXIT_ALL);
-	menu_display(id, iMenu, 0);
-	
-	return PLUGIN_HANDLED;
+    menu_setprop(menu, MPROP_EXIT, MEXIT_ALL);
+    menu_display(id, menu, 0);
+    
+    return PLUGIN_HANDLED;
 }
 
-public Zombie_Menu_Handler(id, menu, item){
+public Zombie_Menu_Handler(id, menu, item) {
+    if(item == MENU_EXIT) {
+        menu_destroy(menu);
+        return PLUGIN_HANDLED;
+    }
+    
+    g_iZombieClass[id] = item;
 
-	if(item == MENU_EXIT){
+    new name[MAX_NAME_LENGTH];
+    ArrayGetString(g_ZombieName, item, name, sizeof(name));
+    client_print_color(id, print_team_default, "^1Вы выбрали класс зомби: ^4%s", name);
 
-		menu_destroy(menu);
-		return PLUGIN_HANDLED;
-	}
-	
-	g_iZombieClass[id] = item;
-
-	new szName[32];
-	ArrayGetString(g_ZombieName, item, szName, sizeof(szName));
-	client_print_color(id, print_team_default, "^1Вы выбрали класс зомби: ^4%s", szName);
-
-	if(IsZombie(id)){
-		
-		rg_round_respawn(id);
-	}
-	
-	menu_destroy(menu);
-	
-	return PLUGIN_HANDLED;
+    if(IsZombie(id)) {
+        rg_round_respawn(id);
+    }
+    
+    menu_destroy(menu);
+    return PLUGIN_HANDLED;
 }
 
-public CBasePlayer_Spawn_Post(id){
-
-	if(g_iTeam[id] == TEAM_UNASSIGNED){
-
-		g_iTeam[id] = get_member(id, m_iTeam);
-	}
-
-	if(!IsAlive(id)){
-
-		return;
-	}
-	
-	rg_remove_all_items(id);
-	rg_give_item(id, "weapon_knife");
-	
-	if(IsZombie(id)){
-
-		if(g_bFirstSpawn[id]){
-
-			Zombie_Menu(id);
-			g_bFirstSpawn[id] = false;
-		}
-		
-		set_entvar(id, var_health, Float:ArrayGetCell(g_ZombieHP, g_iZombieClass[id]));
-		set_entvar(id, var_maxspeed, Float:ArrayGetCell(g_ZombieSpeed, g_iZombieClass[id]));
-		set_entvar(id, var_gravity, Float:ArrayGetCell(g_ZombieGravity, g_iZombieClass[id]));
-
-		ArrayGetString(g_ZombieModel, g_iZombieClass[id], g_szModel, charsmax(g_szModel));
-		rg_set_user_model(id, g_szModel, true);
-	}
-	if(IsHuman(id)){
-	
-		rg_reset_maxspeed(id);
-		rg_reset_user_model(id, true);
-	}
-	set_task_ex(MAX_HOLDTIME, "taskPlayerHud", PlayerTask(id), .flags = SetTask_Repeat);
+public taskPlayerHud(iTaskId) {
+    UpdateHUD(GetPlayerByTaskID(iTaskId));
 }
 
-public Ham_Item_Deploy_Post(weapon){
-
-	new id = get_member(weapon, m_pPlayer);
-
-	if(!IsConnected(id)){
-
-		return HAM_IGNORED;
-	}
-
-	if(IsZombie(id)){
-
-		new szHandmodel[64];
-		ArrayGetString(g_ZombieHandModel, g_iZombieClass[id], szHandmodel, charsmax(szHandmodel));
-		format(szHandmodel, sizeof(szHandmodel), "models/zombie_hand/%s.mdl", szHandmodel);
-		set_entvar(id, var_viewmodel, szHandmodel);
-		set_entvar(id, var_weaponmodel, "");
-	}
-	return HAM_IGNORED;
+public Event_Health(id) {
+    UpdateHUD(id);
 }
 
-public taskPlayerHud(iTaskId){
+public Respawn(id) {
+    id-=TASK_RESPAWN;
 
-	UpdateHUD(GetPlayerByTaskID(iTaskId));
+    if (!IsConnected(id)){
+        return PLUGIN_HANDLED;
+    }/* если зомби, ресаем после смерти */
+    if(IsZombie(id)){
+
+        rg_round_respawn(id);
+    }
+    return PLUGIN_HANDLED;
 }
 
-public Event_Health(id){
+public Msg_SendAudio() {
+    static szSound[17];
+    get_msg_arg_string(2, szSound, charsmax(szSound));
 
-	UpdateHUD(id);
+    if(contain(szSound[7], "terwin") != -1 || contain(szSound[7], "ctwin") != -1 || contain(szSound[7], "rounddraw") != -1) {
+        return PLUGIN_HANDLED;
+    } 
+
+    return PLUGIN_CONTINUE;
 }
 
-UpdateHUD(pPlayer){
-
-	set_hudmessage(g_iHudColor[R], g_iHudColor[G], g_iHudColor[B], 0.02, 0.95, .holdtime = MAX_HOLDTIME, .channel = next_hudchannel(pPlayer));
-	ShowSyncHudMsg(pPlayer, g_iSyncPlayerHud, "[%0.f HP]", Float:get_entvar(pPlayer, var_health));
+public Release_Zombies() {
+    g_bCanBuild = false;
+    remove_task(TASK_BUILDTIME);
+    /* снимаем барьер */
+    set_entvar(g_BarrierEnt, var_solid, SOLID_NOT);
+    set_entvar(g_BarrierEnt, var_renderamt, 0.0);
+    /* страшный звук выхода зомби и анонс */
+    //rg_send_audio(0, VOICE_VICTORY[random_num(0, 1)]);
+    client_print_color(0, print_team_default, "^4ЗОМБИ ВЫШЛИ НА ОХОТУ!");
 }
 
-public CBasePlayer_Killed(iVictim, iKiller){
+public CmdGrabMove(id) {
+    if(!g_bCanBuild || IsZombie(id)) {
+        return PLUGIN_HANDLED;
+    }
 
-	if(!IsConnected(iKiller)) return;
+    if(g_iOwnedEnt[id] && is_entity(g_iOwnedEnt[id])) {
+        CmdGrabStop(id);
+    }
 
-	/* если убийцей является зомби, выводим сообщение о заражение с именем того, кого заразили */
-	/* все проверки именно тут, ибо зомби может себя кильнуть, а потом не воскренусть */
-	/* а также чтобы люди себя не киляли и не становились зомби */
-	if(IsZombie(iKiller) && iVictim != iKiller && rg_get_user_team(iVictim) != rg_get_user_team(iKiller)){
+    new iEnt, iBody;
+    get_user_aiming(id, iEnt, iBody);
 
-		client_print(0, print_center, "Инфекция теперь в крови игрока: %n", iVictim);
-	}/* если убили зомби, выводим мессагу и запускаем воскрешение */
-	if(IsZombie(iVictim)){
+    if(!is_entity(iEnt) || iEnt == g_BarrierEnt || IsAlive(iEnt) || IsMovingEnt(iEnt)) {
+        return PLUGIN_HANDLED;
+    }
 
-		client_print(iVictim, print_center, "Вы воскресните через %0.f секунды!", g_fZombieTime);
-		set_task_ex(g_fZombieTime, "Respawn", iVictim+TASK_RESPAWN);
-	}/* если убили человека, выводим мессагу и запускаем процесс обращение в зомби и воскрешение */
-	else if(g_fInfectTime){
+    new szClass[10], szTarget[7];
+    get_entvar(iEnt, var_classname, szClass, charsmax(szClass));
+    get_entvar(iEnt, var_targetname, szTarget, charsmax(szTarget));
 
-		client_print(iVictim, print_center, "Вас заразили! Вы воскресните через %0.f секунды!", g_fInfectTime);
-		rg_set_user_team(iVictim, TEAM_TERRORIST);
-		IsZombie(iVictim);
-		set_task_ex(g_fInfectTime, "Respawn", iVictim+TASK_RESPAWN);
-	}
-	if(task_exists(PlayerTask(iVictim))){
+    if(!equal(szClass, "func_wall") || equal(szTarget, "ignore")) {
+        return PLUGIN_HANDLED;
+    }
 
-		remove_task(PlayerTask(iVictim));
-		ClearSyncHud(iVictim, g_iSyncPlayerHud);
-	}
-}
+    ExecuteForward(g_Forward[FWD_GRAB_ENTITY_PRE], g_FwdReturn, id, iEnt);
 
-public Respawn(id){
+    new Float:fOrigin[POS], iAiming[POS], Float:fAiming[POS];
 
-	id-=TASK_RESPAWN;
+    get_user_origin(id, iAiming, Origin_AimEndEyes);
+    IVecFVec(iAiming, fAiming);
 
-	if (!IsConnected(id)){
+    get_entvar(iEnt, var_origin, fOrigin);
+    log_amx("get_entvar(iEnt, var_origin, fOrigin) | fOrigin[X] = %f | fOrigin[Y] = %f | fOrigin[Z] = %f", fOrigin[X], fOrigin[Y], fOrigin[Z]);
 
-		return PLUGIN_HANDLED;
-	}/* если зомби, ресаем после смерти */
-	if(IsZombie(id)){
+    g_fOffset1[id] = fOrigin[X] - fAiming[X];
+    g_fOffset2[id] = fOrigin[Y] - fAiming[Y];
+    g_fOffset3[id] = fOrigin[Z] - fAiming[Z];
 
-		rg_round_respawn(id);
-	}
-	return PLUGIN_HANDLED;
-}
+    g_fEntDist[id] = get_user_aiming(id, iEnt, iBody);
 
-public RG_Round_End(WinStatus:status, ScenarioEventEndRound:event){
+    if(g_fEntDist[id] < MIN_MOVE_DISTANCE) {
+        g_fEntDist[id] = MIN_DIST_SET;
+    }
 
-	switch(event){
+    if(g_fEntDist[id] > MAX_MOVE_DISTANCE) {
+        return PLUGIN_HANDLED;
+    }
 
-		case ROUND_CTS_WIN:{
+    set_entvar(iEnt, var_rendermode, kRenderTransColor);
+    set_entvar(iEnt, var_rendercolor, Float:{000.0, 150.0, 000.0});
+    set_entvar(iEnt, var_renderamt, 100.0);
 
-			g_bRoundEnd = true;
-			client_print(0, print_center, "ЛЮДИ ПОБЕДИЛИ!");
-			//rg_send_audio(0, VOICE_VICTORY[random_num(0, 1)]);
-		}
-		case ROUND_TERRORISTS_WIN:{
+    MovingEnt(iEnt);
+    SetEntMover(iEnt, id);
+    g_iOwnedEnt[id] = iEnt;
 
-			g_bRoundEnd = true;
-			client_print(0, print_center, "ЗОМБИ ПОБЕДИЛИ!");
-			//rg_send_audio(0, VOICE_VICTORY[random_num(2, 3)]);
-		}
-		case ROUND_GAME_OVER:{
+    ExecuteForward(g_Forward[FWD_GRAB_ENTITY_POST], g_FwdReturn, id, iEnt);
 
-			g_bRoundEnd = true;
-			rg_update_teamscores(1, 0, true);
-			client_print(0, print_center, "ЛЮДИ ПОБЕДИЛИ!");
-			//rg_send_audio(0, VOICE_VICTORY[random_num(0, 1)]);
-		}
-	}
-}
-
-public Msg_SendAudio(){
-
-	static szSound[17];
-	get_msg_arg_string(2, szSound, charsmax(szSound));
-
-	if(contain(szSound[7], "terwin") != -1 || contain(szSound[7], "ctwin") != -1 || contain(szSound[7], "rounddraw") != -1){
-
-		return PLUGIN_HANDLED;
-	} 
-	return PLUGIN_CONTINUE;
-}
-
-public Release_Zombies(){
-
-	g_bCanBuild = false;
-	remove_task(TASK_BUILDTIME);
-	/* снимаем барьер */
-	set_entvar(g_iEntBarrier, var_solid, SOLID_NOT);
-	set_entvar(g_iEntBarrier, var_renderamt, 0.0);
-	/* страшный звук выхода зомби и анонс */
-	//rg_send_audio(0, VOICE_VICTORY[random_num(0, 1)]);
-	client_print_color(0, print_team_default, "^4ЗОМБИ ВЫШЛИ НА ОХОТУ!");
-}
-
-public PM_Move_Pre(id){
-
-	if(!IsAlive(id)){
-
-		return HC_CONTINUE;
-	}
-
-	new iButton = get_entvar(id, var_button);
-	new iOldButton = get_entvar(id, var_oldbuttons);
-
-	if(iButton & IN_USE && !(iOldButton & IN_USE) && !g_iOwnedEnt[id]){
-
-		CmdGrabMove(id);
-	}
-	else if(iOldButton & IN_USE && !(iButton & IN_USE) && g_iOwnedEnt[id]){
-
-		CmdGrabStop(id);
-	}
-	return HC_CONTINUE;
-}
-
-public CmdGrabMove(id){
-	
-	if (IsZombie(id)){
-
-		return PLUGIN_HANDLED;
-	}
-
-	if(!g_bCanBuild){
-
-		return PLUGIN_HANDLED;
-	}
-
-	if (g_iOwnedEnt[id] && is_valid_ent(g_iOwnedEnt[id])){
-
-		CmdGrabStop(id);
-	}
-
-	new iEnt, iBody;
-	get_user_aiming(id, iEnt, iBody);
-
-	if (!is_valid_ent(iEnt) || iEnt == g_iEntBarrier || IsAlive(iEnt) || IsMovingEnt(iEnt)){
-
-		return PLUGIN_HANDLED;
-	}
-
-	new szClass[10], szTarget[7];
-	get_entvar(iEnt, var_classname, szClass, 9);
-	get_entvar(iEnt, var_targetname, szTarget, 6);
-
-	if (!equal(szClass, "func_wall") || equal(szTarget, "ignore")){
-
-		return PLUGIN_HANDLED;
-	}
-
-	ExecuteForward(g_fwGrabEnt_Pre, g_fwDummyResult, id, iEnt);
-
-	new Float:fOrigin[XYZ], iAiming[XYZ], Float:fAiming[XYZ];
-
-	get_user_origin(id, iAiming, 3);
-	IVecFVec(iAiming, fAiming);
-	get_entvar(iEnt, var_origin, fOrigin);
-
-	g_fOffset1[id] = fOrigin[X] - fAiming[X];
-	g_fOffset2[id] = fOrigin[Y] - fAiming[Y];
-	g_fOffset3[id] = fOrigin[Z] - fAiming[Z];
-
-	g_fEntDist[id] = get_user_aiming(id, iEnt, iBody);
-
-	if (g_fEntMinDist){
-
-		if (g_fEntDist[id] < g_fEntMinDist){
-
-			g_fEntDist[id] = g_fEntSetDist;
-		}
-	}
-	else if (g_fEntMaxDist){
-
-		if (g_fEntDist[id] > g_fEntMaxDist){
-
-			return PLUGIN_HANDLED;
-		}
-	}
-
-	set_entvar(iEnt, var_rendermode, kRenderTransColor);
-	set_entvar(iEnt, var_rendercolor, Float:{000.0, 150.0, 000.0});
-	set_entvar(iEnt, var_renderamt, 100.0);
-
-	MovingEnt(iEnt);
-	SetEntMover(iEnt, id);
-	g_iOwnedEnt[id] = iEnt;
-
-	ExecuteForward(g_fwGrabEnt_Post, g_fwDummyResult, id, iEnt);
-
-	return PLUGIN_HANDLED;
+    return PLUGIN_HANDLED;
 }
 
 public CmdGrabStop(id){
 
-	if (!g_iOwnedEnt[id]){
+    if (!g_iOwnedEnt[id]){
 
-		return PLUGIN_HANDLED;
-	}
+        return PLUGIN_HANDLED;
+    }
 
-	new iEnt = g_iOwnedEnt[id];
+    new iEnt = g_iOwnedEnt[id];
 
-	ExecuteForward(g_fwDropEnt_Pre, g_fwDummyResult, id, iEnt);
+    ExecuteForward(g_Forward[FWD_DROP_ENTITY_PRE], g_FwdReturn, id, iEnt);
 
-	set_entvar(iEnt, var_rendermode, kRenderNormal);
+    set_entvar(iEnt, var_rendermode, kRenderNormal);
 
-	UnsetEntMover(iEnt);
-	g_iOwnedEnt[id] = 0;
-	UnmovingEnt(iEnt);
+    UnsetEntMover(iEnt);
+    g_iOwnedEnt[id] = 0;
+    UnmovingEnt(iEnt);
 
-	ExecuteForward(g_fwDropEnt_Post, g_fwDummyResult, id, iEnt);
+    ExecuteForward(g_Forward[FWD_DROP_ENTITY_POST], g_FwdReturn, id, iEnt);
 
-	return PLUGIN_HANDLED;
+    return PLUGIN_HANDLED;
 }
-
-public CBasePlayer_PreThink(id){
-
-	if (!IsAlive(id)){
-
-		CmdGrabStop(id);
-		return;
-	}
-
-	if (!g_iOwnedEnt[id] || !is_valid_ent(g_iOwnedEnt[id])){
-
-		return;
-	}
-
-	new iButton = get_entvar(id, var_button);
-
-	if (iButton & IN_ATTACK){
-
-		g_fEntDist[id] += OBJECT_PUSHPULLRATE;
-
-		if (g_fEntDist[id] > g_fEntMaxDist){
-
-			g_fEntDist[id] = g_fEntMaxDist;
-			client_print(id, print_center, "Достигнута максимальная дистанция");
-		}
-		else{
-
-			client_print(id, print_center, "Отталкиваем...");
-		}
-		ExecuteForward(g_fwPushPull, g_fwDummyResult, id, g_iOwnedEnt[id], 1);
-	}
-	else if (iButton & IN_ATTACK2){
-
-		g_fEntDist[id] -= OBJECT_PUSHPULLRATE;
-
-		if (g_fEntDist[id] < g_fEntSetDist){
-
-			g_fEntDist[id] = g_fEntSetDist;
-			client_print(id, print_center, "Достигнута минимальная дистанция");
-		}
-		else{
-
-			client_print(id, print_center, "Притягиваем...");
-		}
-		ExecuteForward(g_fwPushPull, g_fwDummyResult, id, g_iOwnedEnt[id], 2);
-	}
-
-	new iOrigin[XYZ], iLook[XYZ], Float:fOrigin[XYZ], Float:fLook[XYZ], Float:vMoveTo[XYZ], Float:fLength;
-
-	get_user_origin(id, iOrigin, 1);
-	IVecFVec(iOrigin, fOrigin);
-	get_user_origin(id, iLook, 3);
-	IVecFVec(iLook, fLook);
-
-	fLength = get_distance_f(fLook, fOrigin);
-
-	if (fLength == 0.0) fLength = 1.0;
-
-	vMoveTo[X] = (fOrigin[X] + (fLook[X] - fOrigin[X]) * g_fEntDist[id] / fLength) + g_fOffset1[id];
-	vMoveTo[Y] = (fOrigin[Y] + (fLook[Y] - fOrigin[Y]) * g_fEntDist[id] / fLength) + g_fOffset2[id];
-	vMoveTo[Z] = (fOrigin[Z] + (fLook[Z] - fOrigin[Z]) * g_fEntDist[id] / fLength) + g_fOffset3[id];
-	vMoveTo[Z] -= floatfract(vMoveTo[Z]);
-
-	entity_set_origin(g_iOwnedEnt[id], vMoveTo);
-}
-
 
 public plugin_natives(){
-
-	register_native("rebb_register_zombie_class", "native_register_zombie_class");
-	register_native("rebb_get_class_id", "native_zombie_get_class_id");
+    register_native("rebb_register_zombie_class", "native_register_zombie_class");
+    register_native("rebb_get_class_id", "native_zombie_get_class_id");
 }
 
-public native_register_zombie_class(iPlugin, iParams){
+public native_register_zombie_class(iPlugin, iParams) {
 
-	enum { arg_name = 1, arg_info, arg_model, arg_handmodel, arg_health, arg_speed, arg_gravity, arg_flags };
-	
-	if(!g_bCanRegister){
+    enum { arg_name = 1, arg_info, arg_model, arg_handmodel, arg_health, arg_speed, arg_gravity, arg_flags };
+    
+    if(!g_bCanRegister){
 
-		return -1;
-	}
-	new szName[32], szInfo[32], szModel[128], szHandmodel[64], Float:fHealth, Float:fSpeed, Float:fGravity, iFlags;
+        return -1;
+    }
+    new szName[32], szInfo[32], szModel[128], szHandmodel[64], Float:fHealth, Float:fSpeed, Float:fGravity, iFlags;
 
-	get_string(arg_name, szName, sizeof(szName));
-	ArrayPushString(g_ZombieName, szName);
+    get_string(arg_name, szName, sizeof(szName));
+    ArrayPushString(g_ZombieName, szName);
 
-	get_string(arg_info, szInfo, sizeof(szInfo));
-	ArrayPushString(g_ZombieInfo, szInfo);
+    get_string(arg_info, szInfo, sizeof(szInfo));
+    ArrayPushString(g_ZombieInfo, szInfo);
 
-	get_string(arg_model, szModel, sizeof(szModel)); 
-	_precache_model(g_ZombieModel, szModel, "player");
+    get_string(arg_model, szModel, sizeof(szModel)); 
+    precache_model_ex(g_ZombieModel, szModel, "player");
 
-	get_string(arg_handmodel, szHandmodel, sizeof(szHandmodel)); 
-	_precache_model(g_ZombieHandModel, szHandmodel, "zombie_hand");
+    get_string(arg_handmodel, szHandmodel, sizeof(szHandmodel)); 
+    precache_model_ex(g_ZombieHandModel, szHandmodel, "zombie_hand");
 
-	fHealth = get_param_f(arg_health);
-	ArrayPushCell(g_ZombieHP, fHealth);
+    fHealth = get_param_f(arg_health);
+    ArrayPushCell(g_ZombieHP, fHealth);
 
-	fSpeed = get_param_f(arg_speed);
-	ArrayPushCell(g_ZombieSpeed, fSpeed);
+    fSpeed = get_param_f(arg_speed);
+    ArrayPushCell(g_ZombieSpeed, fSpeed);
 
-	fGravity = get_param_f(arg_gravity);
-	ArrayPushCell(g_ZombieGravity, fGravity);
+    fGravity = get_param_f(arg_gravity);
+    ArrayPushCell(g_ZombieGravity, fGravity);
 
-	iFlags = get_param(arg_flags);
-	ArrayPushCell(g_ZombieFlags, iFlags);
-	
-	ExecuteForward(g_Forwards[FWD__CLASS_REGISTERED], _, g_iZombieCount, szName);
+    iFlags = get_param(arg_flags);
+    ArrayPushCell(g_ZombieFlags, iFlags);
+    
+    // индекс класса в форварде будет отличаться от того, который вернет натив регистрации
+    ExecuteForward(g_Forward[FWD_CLASS_REGISTERED], _, g_ClassesCount, szName);
 
-	return g_iZombieCount++;
+    return g_ClassesCount++;
 }
 
-public _precache_model(Array:arr, const model[], const path[]){
+precache_model_ex(Array:arr, const model[], const path[]) {
+    new buffer[MAX_BUFFER_INFO];
+    ArrayPushString(arr, model);
 
-	static szBuffer[128];
+    if(equal(path, "player")) {
+        formatex(buffer, sizeof(buffer), "models/%s/%s/%s.mdl", path, model, model);
+    } else{
+        formatex(buffer, sizeof(buffer), "models/%s/%s.mdl", path, model);
+    }
 
-	ArrayPushString(arr, model);
-	if(equal(path, "player")){
-
-		formatex(szBuffer, sizeof(szBuffer), "models/%s/%s/%s.mdl", path, model, model);
-	}
-	else{
-
-		formatex(szBuffer, sizeof(szBuffer), "models/%s/%s.mdl", path, model);
-	}
-	precache_model(szBuffer);
+    precache_model(buffer);
 }
 
 public native_zombie_get_class_id(id) return g_iZombieClass[id];
 
-RegisterCvars() {
-	bind_pcvar_string(
-		create_cvar(
-			.name = "game_name", 
-			.string = "ReBaseBuilder", 
-			.flags = FCVAR_NONE, 
-			.description = getCvarDesc("GAME_NAME")
-		), g_szGameName, charsmax(g_szGameName)
-	);
-	bind_pcvar_num(
-		create_cvar(
-			.name = "build_time", 
-			.string = "15", 
-			.flags = FCVAR_NONE, 
-			.description = getCvarDesc("BUILD_TIME")
-		), g_iBuildTime
-	);
-	bind_pcvar_num(
-		create_cvar(
-			.name = "prep_time", 
-			.string = "15", 
-			.flags = FCVAR_NONE, 
-			.description = getCvarDesc("PREP_TIME")
-		), g_iPrepTime
-	);
-	bind_pcvar_float(
-		create_cvar(
-			.name = "zombie_respawn_delay", 
-			.string = "3.0", 
-			.flags = FCVAR_NONE, 
-			.description = getCvarDesc("ZOMBIE_RESPAWN_DELAY")
-		), g_fZombieTime
-	);
-	bind_pcvar_float(
-		create_cvar(
-			.name = "infection_respawn", 
-			.string = "5.0", 
-			.flags = FCVAR_NONE, 
-			.description = getCvarDesc("INFECTION_RESPAWN")
-		), g_fInfectTime
-	);
-	bind_pcvar_float(
-		create_cvar(
-			.name = "max_move_dist", 
-			.string = "768.0", 
-			.flags = FCVAR_NONE, 
-			.description = getCvarDesc("MAX_MOVE_DIST"), 
-			.has_min = true, 
-			.min_val = 768.0, 
-			.has_max = true, 
-			.max_val = 768.0
-		), g_fEntMaxDist
-	);
-	bind_pcvar_float(
-		create_cvar(
-			.name = "min_move_dist", 
-			.string = "32.0", 
-			.flags = FCVAR_NONE, 
-			.description = getCvarDesc("MIN_MOVE_DIST"), 
-			.has_min = true, 
-			.min_val = 32.0, 
-			.has_max = true, 
-			.max_val = 32.0
-		), g_fEntMinDist
-	);
-	bind_pcvar_float(
-		create_cvar(
-			.name = "min_dist_set", 
-			.string = "64.0", 
-			.flags = FCVAR_NONE, 
-			.description = getCvarDesc("MIN_DIST_SET"), 
-			.has_min = true, 
-			.min_val = 64.0, 
-			.has_max = true, 
-			.max_val = 64.0
-		), g_fEntSetDist
-	); 
+RegisterForwards() {
+    RegisterHookChain(RG_RoundEnd, "Round_End_Post", true);
+    RegisterHookChain(RG_CSGameRules_RestartRound, "CSGameRules_RestartRound_Pre", false);
+    RegisterHookChain(RG_CSGameRules_RestartRound, "CSGameRules_RestartRound_Post", true);
+    RegisterHookChain(RG_CBasePlayer_DropPlayerItem, "CBasePlayer_DropPlayerItem_Pre", false);
+    RegisterHookChain(RG_CBasePlayer_Spawn, "CBasePlayer_Spawn_Post", true);
+    //RegisterHookChain(RG_CSGameRules_OnRoundFreezeEnd, "CSGameRules_OnRoundFreezeEnd", true);
+    RegisterHookChain(RG_CBasePlayer_Killed, "CBasePlayer_Killed", true);
+    RegisterHookChain(RG_CBasePlayer_PreThink, "CBasePlayer_PreThink");
+    RegisterHookChain(RG_PM_Move, "PM_Move_Pre", false);
+
+    RegisterHam(Ham_Item_Deploy, "weapon_knife", "Ham_Item_Deploy_Post", true);
 }
+
+RegisterCoreForwards() {
+    g_Forward[FWD_CLASS_REG_REQUEST] = CreateMultiForward("rebb_class_reg_request", ET_IGNORE);
+    g_Forward[FWD_CLASS_REGISTERED] = CreateMultiForward("rebb_class_registered", ET_IGNORE, FP_CELL, FP_STRING);
+    g_Forward[FWD_PUSH_PULL] = CreateMultiForward("bb_block_pushpull", ET_IGNORE, FP_CELL, FP_CELL, FP_CELL);
+    g_Forward[FWD_GRAB_ENTITY_PRE] = CreateMultiForward("bb_grab_pre", ET_IGNORE, FP_CELL, FP_CELL);
+    g_Forward[FWD_GRAB_ENTITY_POST] = CreateMultiForward("bb_grab_post", ET_IGNORE, FP_CELL, FP_CELL);
+    g_Forward[FWD_DROP_ENTITY_PRE] = CreateMultiForward("bb_drop_pre", ET_IGNORE, FP_CELL, FP_CELL);
+    g_Forward[FWD_DROP_ENTITY_POST] = CreateMultiForward("bb_drop_post", ET_IGNORE, FP_CELL, FP_CELL);
+}
+
+RegisterCvars() {
+    register_cvar("re_basebuilder", VERSION, FCVAR_SERVER|FCVAR_SPONLY|FCVAR_UNLOGGED);
+    bind_pcvar_string(
+        create_cvar(
+            .name = "rebb_game_name", 
+            .string = "ReBaseBuilder", 
+            .flags = FCVAR_NONE, 
+            .description = GetCvarDesc("GAME_NAME")
+        ), g_Cvar[GAME_NAME], charsmax(g_Cvar[GAME_NAME])
+    );
+    bind_pcvar_num(
+        create_cvar(
+            .name = "rebb_building_time", 
+            .string = "90", 
+            .flags = FCVAR_NONE, 
+            .description = GetCvarDesc("BUILDING_TIME")
+        ), g_Cvar[BUILDING_TIME]
+    );
+    bind_pcvar_num(
+        create_cvar(
+            .name = "rebb_preparation_time", 
+            .string = "15", 
+            .flags = FCVAR_NONE,
+            .description = GetCvarDesc("PREP_TIME")
+        ), g_Cvar[PREPARATION_TIME]
+    );
+    bind_pcvar_float(
+        create_cvar(
+            .name = "rebb_zombie_respawn_delay", 
+            .string = "3.0", 
+            .flags = FCVAR_NONE, 
+            .description = GetCvarDesc("ZOMBIE_RESPAWN_DELAY")
+        ), g_Cvar[ZOMBIE_RESPAWN_DELAY]
+    );
+    bind_pcvar_float(
+        create_cvar(
+            .name = "rebb_infection_respawn_delay", 
+            .string = "5.0", 
+            .flags = FCVAR_NONE, 
+            .description = GetCvarDesc("INFECTION_RESPAWN_DELAY")
+        ), g_Cvar[INFECTION_RESPAWN_DELAY]
+    ); 
+}
+
+GetCvarsPointers() {    
+    for(new i; i < sizeof g_MpCvars; i++) {
+        g_Pointer[i] = get_cvar_pointer(g_MpCvars[i]);
+    }
+}
+
+SetCvarsValues() {
+    set_pcvar_float(g_Pointer[MP_BUYTIME], 0.0);
+    set_pcvar_num(g_Pointer[MP_ROUNDOVER], 1);
+    set_pcvar_num(g_Pointer[MP_ITEM_STAYTIME], 0);
+}
+
+UpdateHUD(const index) {
+    set_hudmessage(g_HudColor[R], g_HudColor[G], g_HudColor[B], 0.02, 0.95, .holdtime = MAX_HOLDTIME, .channel = next_hudchannel(index));
+    ShowSyncHudMsg(index, g_SyncHud, "[%0.f HP]", Float:get_entvar(index, var_health));
+}
+
+/*FindEntity(const entityname[], const targetname[]) {
+    new ent, name[MAX_NAME_LENGTH];
+    while((ent = rg_find_ent_by_class(ent, entityname))) {
+        get_entvar(ent, var_targetname, name, charsmax(name));
+        if(equali(name, targetname)) {
+            return ent;
+        }
+    }
+
+    return NULLENT;
+}*/
