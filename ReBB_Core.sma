@@ -351,7 +351,6 @@ public CBasePlayer_PreThink(id) {
     }
 
     new iButton = get_entvar(id, var_button);
-
     if(iButton & IN_ATTACK) {
         g_fEntDist[id] += OBJECT_PUSHPULLRATE;
 
