@@ -37,9 +37,9 @@ Thx for the mod idea and original code
 //#include <xs>
 
 // Автосоздание конфига
-//#define AUTO_CFG
+#define AUTO_CFG
 
-new const VERSION[] = "0.2.2 Alpha";
+new const VERSION[] = "0.2.5 Alpha";
 
 // List of client commands that open zombie class menu
 new const MENU_CMDS[][] = {
@@ -76,13 +76,23 @@ enum any:CVAR_LIST {
     PREPARATION_TIME,
     Float:ZOMBIE_RESPAWN_DELAY,
     Float:INFECTION_RESPAWN_DELAY,
-    BLOCK_DROP
+    BLOCK_DROP_WEAPON
 };
 
 enum any:MULTYPLAY_CVARS {
     MP_BUYTIME,
     MP_ROUNDOVER,
     //MP_ITEM_STAYTIME
+};
+
+enum any:SOUND_ENUM {
+    ZOMBIE_WIN,
+	HUMAN_WIN,
+	
+	ZOMBIE_RELEASE,
+	
+	BLOCK_GRAB,
+	BLOCK_DROP
 };
 
 enum FORWARDS_LIST {
@@ -105,6 +115,16 @@ new const g_MpCvars[MULTYPLAY_CVARS][] = {
     //"mp_item_staytime"
 };
 
+new g_szSoundName[SOUND_ENUM][] = {
+    "zombie_win",
+	"human_win",
+	
+	"zombie_release",
+	
+	"block_grab",
+	"block_drop"
+};
+
 new g_Pointer[MULTYPLAY_CVARS];
 new g_Forward[FORWARDS_LIST];
 
@@ -118,7 +138,7 @@ new bool: g_bFirstSpawn[MAX_PLAYERS +1], bool: g_bSwapTeams, bool: g_bCanBuild, 
 new bool: g_bZombiesReleased;
 new Float: g_fOffset1[MAX_PLAYERS +1], Float: g_fOffset2[MAX_PLAYERS +1], Float: g_fOffset3[MAX_PLAYERS +1];
 
-stock g_szModel[128];
+new g_szSound[SOUND_ENUM][PLATFORM_MAX_PATH];
 
 new bool:g_bCanRegister;
 
@@ -137,7 +157,7 @@ new g_SyncHud;
 new g_msgSendAudio;
 new g_hMsgSendAudio;
 
-new HookChain: g_hPreThink, HookChain: g_hPMove;
+new HookChain: g_hPMove;
 
 #define LockBlock(%1,%2)            (set_entvar(%1, var_iuser1, %2))
 #define UnlockBlock(%1)             (set_entvar(%1, var_iuser1, 0))
@@ -175,10 +195,16 @@ public plugin_precache() {
     if(!g_ClassesCount) {
         set_fail_state("Registered zombie classes not found!");
     }
+
+    for(new i; i < SOUND_ENUM; i++){
+
+        formatex(g_szSound[i], charsmax(g_szSound[]), "re_basebuilder/%s.wav", g_szSoundName[i]);
+        precache_sound(g_szSound[i]);
+    }
 }
 
 public plugin_init() {
-    //register_dictionary("rebb.txt") // TODO
+    register_dictionary("re_basebuilder.txt"); // TODO
 
     RegisterHooks();
     RegisterCvars();
@@ -233,11 +259,10 @@ public RoundEnd_Pre(WinStatus:status, ScenarioEventEndRound:event) {
 public RoundEnd_Post(WinStatus:status, ScenarioEventEndRound:event) {
     unregister_message(g_msgSendAudio, g_hMsgSendAudio);
 
-    if(!GetHookChainReturn(ATYPE_INTEGER)) { // TEST maybe need to be ATYPE_BOOL
+    if(!GetHookChainReturn(ATYPE_BOOL)) { // TEST maybe need to be ATYPE_BOOL
         return;
     }
 
-    DisableHookChain(g_hPreThink);
     DisableHookChain(g_hPMove);
 
     g_bRoundEnded = true;
@@ -260,19 +285,19 @@ public RoundEnd_Post(WinStatus:status, ScenarioEventEndRound:event) {
     switch(event) {
         case ROUND_CTS_WIN: {
             g_bSwapTeams = true;
-            client_print(0, print_center, "ЛЮДИ ПОБЕДИЛИ!");
-            //rg_send_audio(0, SOUND_VICTORY[random_num(0, 1)]);
+            client_print(0, print_center, "%L", LANG_PLAYER, "REBB_HUMAN_WIN");
+            rg_send_audio(0, g_szSound[HUMAN_WIN]);
         }
         case ROUND_TERRORISTS_WIN: {
             g_bSwapTeams = true;
-            client_print(0, print_center, "ЗОМБИ ПОБЕДИЛИ!");
-            //rg_send_audio(0, SOUND_VICTORY[random_num(2, 3)]);
+            client_print(0, print_center, "%L", LANG_PLAYER, "REBB_ZOMBIE_WIN");
+            rg_send_audio(0, g_szSound[ZOMBIE_WIN]);
         }
         case ROUND_GAME_OVER: {
             g_bSwapTeams = true;
             rg_update_teamscores(1, 0, true);
-            client_print(0, print_center, "ЛЮДИ ПОБЕДИЛИ!");
-            //rg_send_audio(0, SOUND_VICTORY[random_num(0, 1)]);
+            client_print(0, print_center, "%L", LANG_PLAYER, "REBB_HUMAN_WIN");
+            rg_send_audio(0, g_szSound[HUMAN_WIN]);
         }
         default: {
             client_print(0, print_center, ""); // clear print_center as we don't print anything else
@@ -312,7 +337,7 @@ public CSGameRules_RestartRound_Pre() {
 }
 
 public CBasePlayer_DropPlayerItem_Pre(const id, const pszItemName[]) {
-    if(g_Cvar[BLOCK_DROP]) {
+    if(g_Cvar[BLOCK_DROP_WEAPON]) {
         client_printex(id, print_center, "#Weapon_Cannot_Be_Dropped");
         SetHookChainReturn(ATYPE_INTEGER, 0);
         return HC_SUPERCEDE;
@@ -369,8 +394,6 @@ public CBasePlayer_Spawn_Post(id) {
         set_entvar(id, var_maxspeed, Float:ArrayGetCell(g_ZombieSpeed, g_iZombieClass[id]));
         set_entvar(id, var_gravity, Float:ArrayGetCell(g_ZombieGravity, g_iZombieClass[id]));
 
-        //ArrayGetString(g_ZombieModel, g_iZombieClass[id], g_szModel, charsmax(g_szModel));
-        //rg_set_user_model(id, g_szModel, true);
         rg_set_user_model(id, fmt("%a", ArrayGetStringHandle(g_ZombieModel, g_iZombieClass[id])), true); // TEST
     }
 
@@ -400,26 +423,38 @@ public CBasePlayer_Killed_Post(iVictim, iKiller, iGibType) {
     if(IsZombie(iVictim)) {
         if(g_Cvar[ZOMBIE_RESPAWN_DELAY] && !g_bRoundEnded) {
             if(g_Cvar[ZOMBIE_RESPAWN_DELAY] >= 1.0) {
-                client_print(iVictim, print_center, "Вы воскреснете через %.0f сек.", g_Cvar[ZOMBIE_RESPAWN_DELAY]);
+                client_print(iVictim, print_center, "%L", LANG_PLAYER, "REBB_ZOMBIE_RESPAWN", g_Cvar[ZOMBIE_RESPAWN_DELAY]);
             }
             set_task_ex(g_Cvar[ZOMBIE_RESPAWN_DELAY], "Respawn", iVictim+TASK_RESPAWN);
         }
     }
     else if(IsPlayer(iKiller) && iVictim != iKiller) {
-        client_print(0, print_center, "Инфекция теперь в крови игрока: %n", iVictim);
+        client_print(0, print_center, "%L", LANG_PLAYER, "REBB_INFECTION", iVictim);
         rg_set_user_team(iVictim, TEAM_TERRORIST);
 
         if(g_Cvar[INFECTION_RESPAWN_DELAY] && !g_bRoundEnded) {
             if(g_Cvar[INFECTION_RESPAWN_DELAY] >= 1.0) {
-                client_print(iVictim, print_center, "Вас заразили! Вы воскреснете через %.0f сек.", g_Cvar[INFECTION_RESPAWN_DELAY]);
+                client_print(iVictim, print_center, "%L", LANG_PLAYER, "REBB_INFECTION_RESPAWN", g_Cvar[INFECTION_RESPAWN_DELAY]);
             }
             set_task_ex(g_Cvar[INFECTION_RESPAWN_DELAY], "Respawn", iVictim+TASK_RESPAWN);
         }
     }
 }
 
-// TODO: перенести в player_move или наоборот всё закинуть в пресинк
-public CBasePlayer_PreThink(id) {
+public PM_Move_Pre(id) {
+    if(!IsAlive(id)) {
+        return;
+    }
+
+    new button = get_entvar(id, var_button);
+    new oldbutton = get_entvar(id, var_oldbuttons);
+
+    if(button & IN_USE && ~oldbutton & IN_USE && !g_iOwnedEnt[id]) {
+        CmdGrabMove(id);
+    } else if(oldbutton & IN_USE && ~button & IN_USE && g_iOwnedEnt[id]) {
+        CmdGrabStop(id);
+    }
+
     if(!IsAlive(id) || IsZombie(id)) {
         CmdGrabStop(id);
         return;
@@ -429,26 +464,25 @@ public CBasePlayer_PreThink(id) {
         return;
     }
 
-    new iButton = get_entvar(id, var_button);
-    if(iButton & IN_ATTACK) {
+    if(button & IN_ATTACK) {
         g_fEntDist[id] += OBJECT_PUSHPULLRATE;
 
         if(g_fEntDist[id] > MAX_MOVE_DISTANCE) {
             g_fEntDist[id] = MAX_MOVE_DISTANCE;
-            client_print(id, print_center, "Достигнута максимальная дистанция");
+            client_print(id, print_center, "%L", LANG_PLAYER, "REBB_MAX_MOVE_DISTANCE");
         } else {
-            client_print(id, print_center, "Отталкиваем...");
+            client_print(id, print_center, "%L", LANG_PLAYER, "REBB_PUSH");
         }
 
         ExecuteForward(g_Forward[FWD_PUSH_PULL], _, id, g_iOwnedEnt[id], 1);
-    } else if (iButton & IN_ATTACK2) {
+    } else if (button & IN_ATTACK2) {
         g_fEntDist[id] -= OBJECT_PUSHPULLRATE;
 
         if(g_fEntDist[id] < MIN_DIST_SET) {
             g_fEntDist[id] = MIN_DIST_SET;
-            client_print(id, print_center, "Достигнута минимальная дистанция");
+            client_print(id, print_center, "%L", LANG_PLAYER, "REBB_MIN_MOVE_DISTANCE");
         } else {
-            client_print(id, print_center, "Притягиваем...");
+            client_print(id, print_center, "%L", LANG_PLAYER, "REBB_PULL");
         }
 
         ExecuteForward(g_Forward[FWD_PUSH_PULL], _, id, g_iOwnedEnt[id], 2);
@@ -475,28 +509,10 @@ public CBasePlayer_PreThink(id) {
     entity_set_origin(g_iOwnedEnt[id], vMoveTo);
 }
 
-public PM_Move_Pre(id) {
-    if(!IsAlive(id)) {
-        return;
-    }
-
-    new button = get_entvar(id, var_button);
-    new oldbutton = get_entvar(id, var_oldbuttons);
-
-    if(button & IN_USE && ~oldbutton & IN_USE && !g_iOwnedEnt[id]) {
-        CmdGrabMove(id);
-    } else if(oldbutton & IN_USE && ~button & IN_USE && g_iOwnedEnt[id]) {
-        CmdGrabStop(id);
-    }
-}
-
 public Ham_Item_Deploy_Post(weapon) {
     new id = get_member(weapon, m_pPlayer);
 
     if(IsConnected(id) && IsZombie(id)) {
-        //new szHandmodel[64];
-        //ArrayGetString(g_ZombieHandModel, g_iZombieClass[id], szHandmodel, charsmax(szHandmodel));
-        //set_entvar(id, var_viewmodel, fmt("models/zombie_hand/%s.mdl", szHandmodel));
         set_entvar(id, var_viewmodel, fmt("models/zombie_hand/%a.mdl", ArrayGetStringHandle(g_ZombieHandModel, g_iZombieClass[id]))); // TEST
         set_entvar(id, var_weaponmodel, "");
     }
@@ -505,7 +521,6 @@ public Ham_Item_Deploy_Post(weapon) {
 public BuildTime() {
     if(!g_bCanBuild) {
         g_bCanBuild = true;
-        EnableHookChain(g_hPreThink);
         EnableHookChain(g_hPMove);
         ExecuteForward(g_Forward[FWD_BUILD_START], _, g_iCountTime);
     }
@@ -514,11 +529,10 @@ public BuildTime() {
 
     if(g_iCountTime) {
         new iMins = g_iCountTime / SECONDS_IN_MINUTE, iSecs = g_iCountTime % SECONDS_IN_MINUTE;
-        client_print(0, print_center, "До конца стройки: %02d:%02d", iMins, iSecs);
+        client_print(0, print_center, "%L %02d:%02d", LANG_PLAYER, "REBB_BUILD_TIME", iMins, iSecs);
     }
-	else {
+    else {
         g_bCanBuild = false;
-        DisableHookChain(g_hPreThink);
         DisableHookChain(g_hPMove);
         remove_task(TASK_BUILDTIME);
         client_print(0, print_center, ""); // clear print_center
@@ -541,7 +555,7 @@ public BuildTime() {
             set_task_ex(0.1, "PrepTime", TASK_PREPTIME);
             set_task_ex(1.0, "PrepTime", TASK_PREPTIME, .flags = SetTask_Repeat);
 
-            client_print_color(0, print_team_default, "^4Люди появились, чтобы проверить свои постройки");
+            client_print_color(0, print_team_default, "%L", LANG_PLAYER, "REBB_PREP_HUMAN_SPAWN");
 
             for(new i; i < count; i++) {
                 rg_round_respawn(players[i]);
@@ -558,7 +572,7 @@ public PrepTime() {
 
     if(g_iCountTime) {
         new iMins = g_iCountTime / SECONDS_IN_MINUTE, iSecs = g_iCountTime % SECONDS_IN_MINUTE;
-        client_print(0, print_center, "До конца подготовки: %02d:%02d", iMins, iSecs);
+        client_print(0, print_center, "%L %02d:%02d", LANG_PLAYER, "REBB_PREP_TIME", iMins, iSecs);
     }
     else {
         remove_task(TASK_PREPTIME);
@@ -567,7 +581,7 @@ public PrepTime() {
 }
 
 public Zombie_Menu(id){
-    new menu = menu_create("Zombie Menu", "Zombie_Menu_Handler");
+    new menu = menu_create(fmt("%L", LANG_PLAYER, "REBB_ZOMBIE_MENU"), "Zombie_Menu_Handler");
 
     for(new i, name[MAX_NAME_LENGTH], info[32], flag; i < g_ClassesCount; i++) {
         ArrayGetString(g_ZombieName, i, name, sizeof(name));
@@ -594,7 +608,7 @@ public Zombie_Menu_Handler(id, menu, item) {
     //new name[MAX_NAME_LENGTH];
     //ArrayGetString(g_ZombieName, item, name, sizeof(name));
     //client_print_color(id, print_team_default, "^1Вы выбрали класс зомби: ^4%s", name);
-    client_print_color(id, print_team_default, "^1Вы выбрали класс зомби: ^4%a", ArrayGetStringHandle(g_ZombieName, item)); // TEST
+    client_print_color(id, print_team_default, "%L ^4%a", LANG_PLAYER, "REBB_ZOMBIE_PICK", ArrayGetStringHandle(g_ZombieName, item)); // TEST
 
     // Сейчас респавн при выборе класса возможен только до начала охоты
     // Это как минимум покрывает абуз быстрым респом через меню, когда осталось
@@ -655,8 +669,8 @@ public Release_Zombies() {
     set_entvar(g_BarrierEnt, var_solid, SOLID_NOT);
     set_entvar(g_BarrierEnt, var_renderamt, 0.0);
 
-    //rg_send_audio(0, SOUND_HUNT_START[random_num(0, 1)]);
-    client_print_color(0, print_team_default, "^4ЗОМБИ ВЫШЛИ НА ОХОТУ!");
+    rg_send_audio(0, g_szSound[ZOMBIE_RELEASE]);
+    client_print_color(0, print_team_default, "%L", LANG_PLAYER, "REBB_ZOMBIE_RELEASE");
 
     ExecuteForward(g_Forward[FWD_ZOMBIES_RELEASED]);
 }
@@ -712,6 +726,8 @@ public CmdGrabMove(id) {
     set_entvar(iEnt, var_rendercolor, Float:{000.0, 150.0, 000.0});
     set_entvar(iEnt, var_renderamt, 100.0);
 
+    rg_send_audio(id, g_szSound[BLOCK_GRAB]);
+
     MovingEnt(iEnt);
     SetEntMover(iEnt, id);
     g_iOwnedEnt[id] = iEnt;
@@ -732,6 +748,8 @@ public CmdGrabStop(id) {
 
     set_entvar(iEnt, var_rendermode, kRenderNormal);
 
+    rg_send_audio(id, g_szSound[BLOCK_DROP]);
+
     UnsetEntMover(iEnt);
     g_iOwnedEnt[id] = 0;
     UnmovingEnt(iEnt);
@@ -749,7 +767,6 @@ RegisterHooks() {
     RegisterHookChain(RG_CBasePlayer_Spawn, "CBasePlayer_Spawn_Post", true);
     RegisterHookChain(RG_CBasePlayer_ResetMaxSpeed, "CBasePlayer_ResetMaxSpeed_Post", true);
     RegisterHookChain(RG_CBasePlayer_Killed, "CBasePlayer_Killed_Post", true);
-    g_hPreThink = RegisterHookChain(RG_CBasePlayer_PreThink, "CBasePlayer_PreThink", false);
     g_hPMove = RegisterHookChain(RG_PM_Move, "PM_Move_Pre", false);
 
     RegisterHam(Ham_Item_Deploy, "weapon_knife", "Ham_Item_Deploy_Post", true);
@@ -776,7 +793,7 @@ RegisterCvars() {
             .name = "rebb_game_name",
             .string = "ReBaseBuilder",
             .flags = FCVAR_NONE,
-            .description = GetCvarDesc("REBB__GAME_NAME")
+            .description = GetCvarDesc("REBB_GAME_NAME")
         ), g_Cvar[GAME_NAME], charsmax(g_Cvar[GAME_NAME])
     );
     bind_pcvar_num(
@@ -784,7 +801,7 @@ RegisterCvars() {
             .name = "rebb_building_time",
             .string = "90",
             .flags = FCVAR_NONE,
-            .description = GetCvarDesc("REBB__BUILDING_TIME"),
+            .description = GetCvarDesc("REBB_BUILDING_TIME"),
             .has_min = true,
             .min_val = 10.0
         ), g_Cvar[BUILDING_TIME]
@@ -794,7 +811,7 @@ RegisterCvars() {
             .name = "rebb_preparation_time",
             .string = "15",
             .flags = FCVAR_NONE,
-            .description = GetCvarDesc("REBB__PREP_TIME"),
+            .description = GetCvarDesc("REBB_PREP_TIME"),
             .has_min = true,
             .min_val = 0.0
         ), g_Cvar[PREPARATION_TIME]
@@ -804,7 +821,7 @@ RegisterCvars() {
             .name = "rebb_zombie_respawn_delay",
             .string = "3.0",
             .flags = FCVAR_NONE,
-            .description = GetCvarDesc("REBB__ZOMBIE_RESPAWN_DELAY"),
+            .description = GetCvarDesc("REBB_ZOMBIE_RESPAWN_DELAY"),
             .has_min = true,
             .min_val = 0.0
         ), g_Cvar[ZOMBIE_RESPAWN_DELAY]
@@ -814,18 +831,18 @@ RegisterCvars() {
             .name = "rebb_infection_respawn_delay",
             .string = "5.0",
             .flags = FCVAR_NONE,
-            .description = GetCvarDesc("REBB__INFECTION_RESPAWN_DELAY"),
+            .description = GetCvarDesc("REBB_INFECTION_RESPAWN_DELAY"),
             .has_min = true,
             .min_val = 0.0
         ), g_Cvar[INFECTION_RESPAWN_DELAY]
     );
     bind_pcvar_num(
             create_cvar(
-            .name = "rebb_block_drop",
+            .name = "rebb_block_drop_weapon",
             .string = "1",
             .flags = FCVAR_NONE,
-            .description = GetCvarDesc("REBB__BLOCK_DROP")
-        ), g_Cvar[BLOCK_DROP]
+            .description = GetCvarDesc("REBB_BLOCK_DROP_WEAPON")
+        ), g_Cvar[BLOCK_DROP_WEAPON]
     );
 }
 
