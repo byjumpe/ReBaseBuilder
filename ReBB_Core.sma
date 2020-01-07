@@ -39,7 +39,7 @@ Thx for the mod idea and original code
 // Автосоздание конфига
 //#define AUTO_CFG
 
-new const VERSION[] = "0.2.1 Alpha";
+new const VERSION[] = "0.2.2 Alpha";
 
 // List of client commands that open zombie class menu
 new const MENU_CMDS[][] = {
@@ -58,6 +58,8 @@ const Float:MAX_HOLDTIME            = 20.0;
 
 enum COLOR { R, G, B };
 enum any:POS { Float:X, Float:Y, Float:Z };
+
+#define IsPlayer(%0) (1 <= %0 <= MaxClients)
 
 enum (+= 100) {
     TASK_BUILDTIME = 100,
@@ -330,7 +332,7 @@ public CBasePlayer_HasRestrictItem_Pre(id, ItemID:iItem, ItemRestType:iRestType)
 
 public CBasePlayer_OnSpawnEquip_Pre(id, bool:bAddDefault, bool:bEquipGame) {
     if(!IsConnected(id)) {
-        return;
+        return HC_CONTINUE;
     }
 
     CmdGrabStop(id);
@@ -339,6 +341,7 @@ public CBasePlayer_OnSpawnEquip_Pre(id, bool:bAddDefault, bool:bEquipGame) {
 
     rg_remove_all_items(id);
     rg_give_item(id, "weapon_knife", GT_APPEND);
+    return HC_SUPERCEDE;
 }
 
 public CBasePlayer_Spawn_Post(id) {
@@ -353,10 +356,10 @@ public CBasePlayer_Spawn_Post(id) {
         g_iTeam[id] = get_member(id, m_iTeam);
     }
 
-    if(IsHuman(id)) {
+    if(!IsZombie(id)) {
         rg_reset_user_model(id, true);
     }
-    else if(IsZombie(id)) {
+    else {
         if(g_bFirstSpawn[id]) {
             Zombie_Menu(id);
             g_bFirstSpawn[id] = false;
@@ -394,27 +397,21 @@ public CBasePlayer_Killed_Post(iVictim, iKiller, iGibType) {
         ClearSyncHud(iVictim, g_SyncHud);
     }
 
-    if(!IsConnected(iKiller)) {
-        return;
-    }
-
     if(IsZombie(iVictim)) {
-        if(!g_bRoundEnded) {
-            if(g_Cvar[ZOMBIE_RESPAWN_DELAY]) {
-                if(g_Cvar[ZOMBIE_RESPAWN_DELAY] >= 1.0) {
-                    client_print(iVictim, print_center, "Вы воскреснете через %.0f сек.", g_Cvar[ZOMBIE_RESPAWN_DELAY]);
-                }
-                set_task_ex(g_Cvar[ZOMBIE_RESPAWN_DELAY], "Respawn", iVictim+TASK_RESPAWN);
+        if(g_Cvar[ZOMBIE_RESPAWN_DELAY] && !g_bRoundEnded) {
+            if(g_Cvar[ZOMBIE_RESPAWN_DELAY] >= 1.0) {
+                client_print(iVictim, print_center, "Вы воскреснете через %.0f сек.", g_Cvar[ZOMBIE_RESPAWN_DELAY]);
             }
+            set_task_ex(g_Cvar[ZOMBIE_RESPAWN_DELAY], "Respawn", iVictim+TASK_RESPAWN);
         }
     }
-    else if(IsZombie(iKiller)) {
+    else if(IsPlayer(iKiller) && iVictim != iKiller) {
         client_print(0, print_center, "Инфекция теперь в крови игрока: %n", iVictim);
         rg_set_user_team(iVictim, TEAM_TERRORIST);
 
         if(g_Cvar[INFECTION_RESPAWN_DELAY] && !g_bRoundEnded) {
             if(g_Cvar[INFECTION_RESPAWN_DELAY] >= 1.0) {
-                client_print(iVictim, print_center, "Вас заразили! Вы воскресните через %.0f сек.", g_Cvar[INFECTION_RESPAWN_DELAY]);
+                client_print(iVictim, print_center, "Вас заразили! Вы воскреснете через %.0f сек.", g_Cvar[INFECTION_RESPAWN_DELAY]);
             }
             set_task_ex(g_Cvar[INFECTION_RESPAWN_DELAY], "Respawn", iVictim+TASK_RESPAWN);
         }
