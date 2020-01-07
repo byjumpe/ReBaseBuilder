@@ -18,14 +18,17 @@ const TANK_ARMOR = 100;
 new g_Class_Tank;
 
 public rebb_class_reg_request(){
-
-	register_plugin("[ReBB] Zombie Tank", "0.1", "ReBB");
+	register_plugin("[ReBB] Zombie Tank", "0.1.1", "ReBB");
 
 	g_Class_Tank = rebb_register_zombie_class(ZombieName, ZombieInfo, ZombieModel, ZombieHandModel, ZombieHP, ZombieSpeed, ZombieGravity, ZombieFlags);
-	
-	if(g_Class_Tank == -1){
-		
-		set_fail_state("[ReBB] Zombie Tank: Wrong registration chain!");
+
+	switch(g_Class_Tank) {
+		case ERR_REG_CLASS__WRONG_PLACE: {
+			set_fail_state("[ReBB] Move class registration to rebb_class_reg_request()!");
+		}
+		case ERR_REG_CLASS__LACK_OF_RES: {
+			set_fail_state("[ReBB] Can't find some resource, see amxx log for more info");
+		}
 	}
 }
 
@@ -35,15 +38,8 @@ public plugin_init(){
 }
 
 public CBasePlayer_Spawn(id){
-	
-	if(!is_user_alive(id)){
 
-		return ;	
-	}
-
-	if(IsZombie(id) && rebb_get_class_id(id) == g_Class_Tank){
-	
-		rg_set_user_armor(id, TANK_ARMOR, ARMOR_VESTHELM);	
+	if(is_user_alive(id) && IsZombie(id) && rebb_get_class_id(id) == g_Class_Tank){
+		rg_set_user_armor(id, TANK_ARMOR, ARMOR_VESTHELM);
 	}
 }
-
