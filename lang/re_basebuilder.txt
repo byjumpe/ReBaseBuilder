@@ -1,0 +1,22 @@
+[ru]
+REBB_HUMAN_WIN = ЛЮДИ ПОБЕДИЛИ!
+REBB_ZOMBIE_WIN = ЗОМБИ ПОБЕДИЛИ!
+REBB_ZOMBIE_RESPAWN = Вы воскреснете через %.0f секунд
+REBB_INFECTION = Инфекция теперь в крови игрока: %n
+REBB_INFECTION_RESPAWN = Вас заразили! Вы воскреснете через %.0f сек.
+REBB_MAX_MOVE_DISTANCE = Достигнута максимальная дистанция
+REBB_MIN_MOVE_DISTANCE = Достигнута минимальная дистанция
+REBB_PUSH = Отталкиваем...
+REBB_PULL = Притягиваем...
+REBB_BUILD_TIME = До конца стройки:
+REBB_PREP_TIME = До конца подготовки:
+REBB_PREP_HUMAN_SPAWN = ^4Люди появились, чтобы проверить свои постройки
+REBB_ZOMBIE_RELEASE = ^4ЗОМБИ ВЫШЛИ НА ОХОТУ!
+REBB_ZOMBIE_MENU = Зомби классы
+REBB_ZOMBIE_PICK = ^1Вы выбрали класс зомби:
+REBB_GAME_NAME = Имя игры в Server Browser
+REBB_BUILDING_TIME = Время стройки в секундах
+REBB_PREP_TIME = Время подготовки в секундах
+REBB_ZOMBIE_RESPAWN_DELAY = Время воскрешения зомби в секундах
+REBB_INFECTION_RESPAWN_DELAY = Время воскрешения инфицированного игрока
+REBB_BLOCK_DROP_WEAPON = Вкл/Выкл блокировку дропа оружия
