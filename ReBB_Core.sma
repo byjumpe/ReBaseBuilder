@@ -47,6 +47,12 @@ new const MENU_CMDS[][] = {
     "say_team /zm"
 };
 
+new const RADIO_CMDS[][] = {
+    "radio1",
+    "radio2",
+    "radio3"
+};
+
 #define MAX_BUFFER_INFO 128
 
 const Float:MAX_MOVE_DISTANCE = 768.0;
@@ -76,23 +82,25 @@ enum any:CVAR_LIST {
     PREPARATION_TIME,
     Float:ZOMBIE_RESPAWN_DELAY,
     Float:INFECTION_RESPAWN_DELAY,
-    BLOCK_DROP_WEAPON
+    BLOCK_DROP_WEAPON,
+    RESET_ENT
 };
 
 enum any:MULTYPLAY_CVARS {
     MP_BUYTIME,
     MP_ROUNDOVER,
+    MP_BUY_ANYWHERE
     //MP_ITEM_STAYTIME
 };
 
 enum any:SOUND_ENUM {
     ZOMBIE_WIN,
-	HUMAN_WIN,
-	
-	ZOMBIE_RELEASE,
-	
-	BLOCK_GRAB,
-	BLOCK_DROP
+    HUMAN_WIN,
+
+    ZOMBIE_RELEASE,
+
+    BLOCK_GRAB,
+    BLOCK_DROP
 };
 
 enum FORWARDS_LIST {
@@ -112,17 +120,18 @@ new const g_HudColor[COLOR] = { 255, 0, 0 };
 new const g_MpCvars[MULTYPLAY_CVARS][] = {
     "mp_buytime",
     "mp_roundover",
+    "mp_buy_anywhere"
     //"mp_item_staytime"
 };
 
 new g_szSoundName[SOUND_ENUM][] = {
     "zombie_win",
-	"human_win",
-	
-	"zombie_release",
-	
-	"block_grab",
-	"block_drop"
+    "human_win",
+
+    "zombie_release",
+
+    "block_grab",
+    "block_drop"
 };
 
 new g_Pointer[MULTYPLAY_CVARS];
@@ -217,6 +226,11 @@ public plugin_init() {
         register_clcmd(MENU_CMDS[i], "Zombie_Menu");
     }
 
+    new const szBlockCallBack[] = "BlockRadioCmd";
+    for(new i; i < sizeof(RADIO_CMDS); i++) {
+            register_clcmd(RADIO_CMDS[i], szBlockCallBack);
+    }
+
     g_msgSendAudio = get_user_msgid("SendAudio");
 
     register_event("Health", "Event_Health", "be", "1>0");
@@ -233,11 +247,18 @@ public plugin_init() {
 
 public OnConfigsExecuted() {
     set_member_game(m_GameDesc, g_Cvar[GAME_NAME]);
+    register_cvar("re_basebuilder", VERSION, FCVAR_SERVER|FCVAR_SPONLY|FCVAR_UNLOGGED);
 }
 
 public plugin_cfg() {
     GetCvarsPointers();
     SetCvarsValues();
+}
+
+public client_putinserver(id) {
+    if(!is_user_bot(id)) {
+        set_member(id, m_bIgnoreRadio, true);
+    }
 }
 
 public client_disconnected(id) {
@@ -259,7 +280,7 @@ public RoundEnd_Pre(WinStatus:status, ScenarioEventEndRound:event) {
 public RoundEnd_Post(WinStatus:status, ScenarioEventEndRound:event) {
     unregister_message(g_msgSendAudio, g_hMsgSendAudio);
 
-    if(!GetHookChainReturn(ATYPE_BOOL)) { // TEST maybe need to be ATYPE_BOOL
+    if(!GetHookChainReturn(ATYPE_BOOL)) {
         return;
     }
 
@@ -314,6 +335,20 @@ public CSGameRules_RestartRound_Pre() {
     set_entvar(g_BarrierEnt, var_rendercolor, Float:{ 0.0, 0.0, 0.0 });
     set_entvar(g_BarrierEnt, var_renderamt, 150.0);
 
+    if(g_Cvar[RESET_ENT]) {
+        new szClass[10], szTarget[7];
+        for(new iEnt = MaxClients; iEnt < 1024; iEnt++) {
+            if(is_valid_ent(iEnt)) {
+                get_entvar(iEnt, var_classname, szClass, charsmax(szClass));
+                get_entvar(iEnt, var_targetname, szTarget, charsmax(szTarget));
+
+                if(iEnt != g_BarrierEnt && equal(szClass, "func_wall") && !equal(szTarget, "ignore")) {
+                    set_entvar(iEnt, var_rendermode, kRenderNormal);
+                    entity_set_origin(iEnt, Float:{ 0.0, 0.0, 0.0 });
+                }
+            }
+        }
+    }
     g_iCountTime = g_Cvar[BUILDING_TIME] + 1;
     set_task_ex(0.1, "BuildTime", TASK_BUILDTIME);
     set_task_ex(1.0, "BuildTime", TASK_BUILDTIME, .flags = SetTask_Repeat);
@@ -564,7 +599,7 @@ public BuildTime() {
             // after players respawning
             ExecuteForward(g_Forward[FWD_PREPARATION_START], _, g_Cvar[PREPARATION_TIME]);
         }
-	}
+    }
 }
 
 public PrepTime() {
@@ -581,6 +616,10 @@ public PrepTime() {
 }
 
 public Zombie_Menu(id){
+    if(g_bZombiesReleased) {
+        return PLUGIN_HANDLED;
+    }
+
     new menu = menu_create(fmt("%L", LANG_PLAYER, "REBB_ZOMBIE_MENU"), "Zombie_Menu_Handler");
 
     for(new i, name[MAX_NAME_LENGTH], info[32], flag; i < g_ClassesCount; i++) {
@@ -605,24 +644,8 @@ public Zombie_Menu_Handler(id, menu, item) {
 
     g_iZombieClass[id] = item;
 
-    //new name[MAX_NAME_LENGTH];
-    //ArrayGetString(g_ZombieName, item, name, sizeof(name));
-    //client_print_color(id, print_team_default, "^1Вы выбрали класс зомби: ^4%s", name);
     client_print_color(id, print_team_default, "%L ^4%a", LANG_PLAYER, "REBB_ZOMBIE_PICK", ArrayGetStringHandle(g_ZombieName, item)); // TEST
 
-    // Сейчас респавн при выборе класса возможен только до начала охоты
-    // Это как минимум покрывает абуз быстрым респом через меню, когда осталось
-    // мало хп, чтобы не ждать таск при смерти (задержка респа по ZOMBIE_RESPAWN_DELAY)
-    // Если такой сценарий не устраивает, нужно убрать проверку g_bZombiesReleased
-    // и вместо неё проверять g_Cvar[ZOMBIE_RESPAWN_DELAY] != 0.0
-    // При этом откроется абуз (помимо вышеописанного):
-    // Если ZOMBIE_RESPAWN_DELAY != 0.0 но INFECTION_RESPAWN_DELAY == 0.0,
-    // т.е. подразумевается что при заражении хумана его как зомби не респавнит,
-    // хуман сможет зайти в это меню и зареспавниться черзе выбор класса
-    // Можно было бы решить это тем что при INFECTION_RESPAWN_DELAY == 0.0
-    // игрок просто не переводится за зомби (остаётся мёртвым КТ), но
-    // такое решение не покрывает возможность перехода в другую команду через меню
-    // или jointeam, если подобный функционал доступен.
     if(IsZombie(id) && !g_bZombiesReleased && !g_bRoundEnded && !task_exists(id+TASK_RESPAWN)) {
         rg_round_respawn(id);
     }
@@ -787,7 +810,6 @@ RegisterCoreForwards() {
 }
 
 RegisterCvars() {
-    register_cvar("re_basebuilder", VERSION, FCVAR_SERVER|FCVAR_SPONLY|FCVAR_UNLOGGED);
     bind_pcvar_string(
         create_cvar(
             .name = "rebb_game_name",
@@ -844,6 +866,14 @@ RegisterCvars() {
             .description = GetCvarDesc("REBB_BLOCK_DROP_WEAPON")
         ), g_Cvar[BLOCK_DROP_WEAPON]
     );
+    bind_pcvar_num(
+            create_cvar(
+            .name = "rebb_reset_ent",
+            .string = "1",
+            .flags = FCVAR_NONE,
+            .description = GetCvarDesc("REBB_RESET_ENT")
+        ), g_Cvar[RESET_ENT]
+    );
 }
 
 GetCvarsPointers() {
@@ -853,9 +883,14 @@ GetCvarsPointers() {
 }
 
 SetCvarsValues() {
-    set_pcvar_float(g_Pointer[MP_BUYTIME], 0.0);
+    set_pcvar_num(g_Pointer[MP_BUYTIME], -1);
     set_pcvar_num(g_Pointer[MP_ROUNDOVER], 1);
+    set_pcvar_num(g_Pointer[MP_BUY_ANYWHERE], 3);
     //set_pcvar_num(g_Pointer[MP_ITEM_STAYTIME], 0);
+}
+
+public BlockRadioCmd() {
+    return PLUGIN_HANDLED_MAIN;
 }
 
 /*FindEntity(const entityname[], const targetname[]) {

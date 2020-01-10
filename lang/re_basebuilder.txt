@@ -20,3 +20,4 @@ REBB_PREP_TIME = Время подготовки в секундах
 REBB_ZOMBIE_RESPAWN_DELAY = Время воскрешения зомби в секундах
 REBB_INFECTION_RESPAWN_DELAY = Время воскрешения инфицированного игрока
 REBB_BLOCK_DROP_WEAPON = Вкл/Выкл блокировку дропа оружия
+REBB_RESET_ENT = Возвращает строительные блоки в начале раунда на свои места
