@@ -25,18 +25,16 @@ Thx for the mod idea and original code
 
 #include <amxmodx>
 #include <amxmisc>
-//#include <engine>
 #include <fakemeta_util>
 #include <hamsandwich>
 #include <reapi>
 #include <time>
 #include <re_basebuilder>
-//#include <xs>
 
 // Автосоздание конфига
 #define AUTO_CFG
 
-new const VERSION[] = "0.2.5 Alpha";
+new const VERSION[] = "0.3.0 Alpha";
 
 // List of client commands that open zombie class menu
 new const MENU_CMDS[][] = {
@@ -248,6 +246,10 @@ new HookChain: g_hPreThink;
 #define SetEntMover(%1,%2)          (set_entvar(%1, var_iuser3, %2))
 #define UnsetEntMover(%1)           (set_entvar(%1, var_iuser3, 0))
 
+#define SetLastMover(%1,%2)         (set_entvar(%1, var_iuser4, %2))
+#define UnsetLastMover(%1)          (set_entvar(%1, var_iuser4, 0))
+#define GetLastMover(%1)            (get_entvar(%1, var_iuser4))
+
 #define IsValidTeam(%1)             (TEAM_TERRORIST <= get_member(%1, m_iTeam) <= TEAM_CT)
 #define GetCvarDesc(%0)             fmt("%L", LANG_SERVER, %0)
 
@@ -344,7 +346,20 @@ public client_disconnected(id) {
     remove_task(id+TASK_RESPAWN);
     remove_task(id+TASK_HEALTH);
 
+    g_iOwnedEntities[id] = 0;
+
     CmdGrabStop(id);
+
+    for(new iEnt = MaxClients; iEnt < 1024; iEnt++) {
+        if(is_nullent(iEnt) && g_Cvar[LOCK_BLOCKS] && BlockLocker(iEnt)) {
+            
+            UnlockBlock(iEnt);
+            set_entvar(iEnt, var_rendermode, kRenderNormal);
+                
+            UnsetLastMover(iEnt);
+            UnsetEntMover(iEnt);
+        }
+    }
 }
 
 public RoundEnd_Pre(WinStatus:status, ScenarioEventEndRound:event) {
@@ -408,6 +423,8 @@ public CSGameRules_RestartRound_Pre() {
     set_entvar(g_BarrierEnt, var_rendermode, kRenderTransColor);
     set_entvar(g_BarrierEnt, var_rendercolor, Float:{ 0.0, 0.0, 0.0 });
     set_entvar(g_BarrierEnt, var_renderamt, 150.0);
+    
+    arrayset(g_iOwnedEntities, 0, MAX_PLAYERS +1);
 
     if(g_Cvar[RESET_ENT]) {
         new szClass[10], szTarget[7];
@@ -416,9 +433,20 @@ public CSGameRules_RestartRound_Pre() {
                 get_entvar(iEnt, var_classname, szClass, charsmax(szClass));
                 get_entvar(iEnt, var_targetname, szTarget, charsmax(szTarget));
 
-                if(iEnt != g_BarrierEnt && equal(szClass, "func_wall") && !equal(szTarget, "ignore")) {
+                if(!BlockLocker(iEnt) && iEnt != g_BarrierEnt && equal(szClass, "func_wall") && !equal(szTarget, "ignore")) {
                     set_entvar(iEnt, var_rendermode, kRenderNormal);
                     engfunc(EngFunc_SetOrigin, iEnt, Float:{ 0.0, 0.0, 0.0 });
+                    
+                    UnsetLastMover(iEnt);
+                    UnsetEntMover(iEnt);
+                }
+                else if(g_Cvar[LOCK_BLOCKS] && BlockLocker(iEnt)) {
+                    UnlockBlock(iEnt);
+                    set_entvar(iEnt, var_rendermode, kRenderNormal);
+                    engfunc(EngFunc_SetOrigin, iEnt, Float:{ 0.0, 0.0, 0.0 });
+                    
+                    UnsetLastMover(iEnt);
+                    UnsetEntMover(iEnt);
                 }
             }
         }
@@ -634,6 +662,10 @@ public CmdGrabMove(id) {
         return PLUGIN_HANDLED;
     }
 
+    if (BlockLocker(iEnt) && BlockLocker(iEnt) != id) {
+        return PLUGIN_HANDLED;
+    }
+
     new szTarget[7];
     get_entvar(iEnt, var_targetname, szTarget, charsmax(szTarget));
 
@@ -686,11 +718,19 @@ public CmdGrabStop(id) {
 
     ExecuteForward(g_Forward[FWD_DROP_ENTITY_PRE], _, id, iEnt);
 
-    set_entvar(iEnt, var_rendermode, kRenderNormal);
+    if(g_Cvar[LOCK_BLOCKS]) {
+        set_entvar(iEnt, var_rendermode, kRenderTransColor);
+        set_entvar(iEnt, var_rendercolor, g_fBlockColor[g_iPlayerColor[id]]);
+        set_entvar(iEnt, var_renderamt, 255.0);
+    }
+    else {
+        set_entvar(iEnt, var_rendermode, kRenderNormal);
+    }
 
     rg_send_audio(id, g_szSound[BLOCK_DROP]);
 
     UnsetEntMover(iEnt);
+    SetLastMover(iEnt, id);
     g_iOwnedEnt[id] = 0;
     UnmovingEnt(iEnt);
 
@@ -833,7 +873,7 @@ public Color_Menu_Handler(id, menu, item) {
 public LockBlockCmd(id){
 
     if(!g_bCanBuild || IsZombie(id) || !g_Cvar[LOCK_BLOCKS]) {
-		return PLUGIN_HANDLED;
+        return PLUGIN_HANDLED;
     }
 
     new iEnt, iBody;
@@ -849,33 +889,34 @@ public LockBlockCmd(id){
     if(equal(szTarget, "ignore")) {
         return PLUGIN_HANDLED;
     }
-    if (!BlockLocker(iEnt) && !IsMovingEnt(iEnt)) {
-        if (g_iOwnedEntities[id] < g_Cvar[MAX_LOCK_BLOCKS] || !g_Cvar[MAX_LOCK_BLOCKS]) {
+    if(!BlockLocker(iEnt) && !IsMovingEnt(iEnt)) {
+        if(g_iOwnedEntities[id] < g_Cvar[MAX_LOCK_BLOCKS] || !g_Cvar[MAX_LOCK_BLOCKS]) {
             LockBlock(iEnt, id);
             g_iOwnedEntities[id]++;
             set_entvar(iEnt, var_rendermode, kRenderTransColor);
             set_entvar(iEnt, var_rendercolor, g_fBlockColor[g_iPlayerColor[id]]);
-                    
+            set_entvar(iEnt, var_renderamt, 255.0);
+
             client_print_color(id, print_team_default, "%L [ %d / %d ]", LANG_SERVER, "REBB_LOCK_BLOCKS_UP", g_iOwnedEntities[id], g_Cvar[MAX_LOCK_BLOCKS]);
         }
-        else if (g_iOwnedEntities[id] >= g_Cvar[MAX_LOCK_BLOCKS]) {
+        else if(g_iOwnedEntities[id] >= g_Cvar[MAX_LOCK_BLOCKS]) {
             client_print_color(id, print_team_default, "%L", LANG_SERVER, "REBB_LOCK_BLOCKS_MAX", g_Cvar[MAX_LOCK_BLOCKS]);
-            }
         }
-        else if (BlockLocker(iEnt)) {
-                if (BlockLocker(iEnt) == id) {
-                    g_iOwnedEntities[BlockLocker(iEnt)]--;
-                    set_entvar(iEnt, var_rendermode, kRenderNormal);
-                    
-                    client_print_color(BlockLocker(iEnt), print_team_default, "%L [ %d / %d ]", LANG_SERVER, "REBB_LOCK_BLOCKS_LOST", g_iOwnedEntities[BlockLocker(iEnt)], g_Cvar[MAX_LOCK_BLOCKS]);
-                    
-                    UnlockBlock(iEnt);
-                }
-                else {
-                    client_print_color(id, print_team_default, "%L", LANG_SERVER, "REBB_LOCK_BLOCKS_FAIL");
-                }
-        }
-        return PLUGIN_HANDLED;
+    }
+    else if(BlockLocker(iEnt)) {
+         if(BlockLocker(iEnt) == id) {
+            g_iOwnedEntities[BlockLocker(iEnt)]--;
+            set_entvar(iEnt, var_rendermode, kRenderNormal);
+
+            client_print_color(BlockLocker(iEnt), print_team_default, "%L [ %d / %d ]", LANG_SERVER, "REBB_LOCK_BLOCKS_LOST", g_iOwnedEntities[BlockLocker(iEnt)], g_Cvar[MAX_LOCK_BLOCKS]);
+
+            UnlockBlock(iEnt);
+         }
+         else {
+            client_print_color(id, print_team_default, "%L", LANG_SERVER, "REBB_LOCK_BLOCKS_FAIL");
+         }
+    }
+    return PLUGIN_HANDLED;
 }
 
 public taskPlayerHud(iTaskId) {
