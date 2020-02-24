@@ -1,7 +1,3 @@
-/* TODO: сделать возможность блокировать блоки */
-/* TODO: меню оружия для хуманов */
-/* TODO: валюту в отдельном плугине и прочую лабудень */
-
 /* TODO: Имя и описание класса нужно будет перевести на МЛ.
         Имя будет использоваться как уникальный строковый
         идентификатор класса в форварде rebb_class_registered() */
@@ -29,7 +25,8 @@ Thx for the mod idea and original code
 
 #include <amxmodx>
 #include <amxmisc>
-#include <engine>
+//#include <engine>
+#include <fakemeta_util>
 #include <hamsandwich>
 #include <reapi>
 #include <time>
@@ -45,6 +42,18 @@ new const VERSION[] = "0.2.5 Alpha";
 new const MENU_CMDS[][] = {
     "say /zm",
     "say_team /zm"
+};
+
+// List of client commands that open select color menu
+new const COLOR_MENU_CMDS[][] = {
+    "say /color",
+    "say_team /color"
+};
+
+// List of client commands that locked block
+new const LOCK_BLOCK_CMDS[][] = {
+    "say /lock",
+    "say_team /lock"
 };
 
 new const RADIO_CMDS[][] = {
@@ -83,7 +92,9 @@ enum any:CVAR_LIST {
     Float:ZOMBIE_RESPAWN_DELAY,
     Float:INFECTION_RESPAWN_DELAY,
     BLOCK_DROP_WEAPON,
-    RESET_ENT
+    RESET_ENT,
+    LOCK_BLOCKS,
+    MAX_LOCK_BLOCKS
 };
 
 enum any:MULTYPLAY_CVARS {
@@ -101,6 +112,25 @@ enum any:SOUND_ENUM {
 
     BLOCK_GRAB,
     BLOCK_DROP
+};
+
+enum any:COLOR_ENUM {
+    RED = 0,
+    PINK,
+    ORANGE,
+    YELLOW,
+    PURPLE,
+    INDIGO,
+    BLACK,
+    GREEN,
+    BLUE,
+    AQUA,
+    LIME,
+    GOLD,
+    DARK_RED,
+    TEAL,
+    NAVY,
+    ORANGE_RED
 };
 
 enum FORWARDS_LIST {
@@ -134,6 +164,45 @@ new g_szSoundName[SOUND_ENUM][] = {
     "block_drop"
 };
 
+new Float:g_fBlockColor[COLOR_ENUM][] = {
+    
+    { 255.0, 0.0, 0.0 },
+    { 255.0, 20.0, 147.0 },
+    { 255.0, 165.0, 0.0 },
+    { 255.0, 255.0, 0.0 },
+    { 128.0, 0.0, 128.0 },
+    { 75.0, 0.0, 130.0 },
+    { 0.0, 0.0, 0.0 },
+    { 0.0, 128.0, 0.0 },
+    { 0.0, 0.0, 255.0 },
+    { 0.0, 255.0, 255.0 },
+    { 0.0, 255.0, 0.0 },
+    { 255.0, 215.0, 0.0 },
+    { 139.0, 0.0, 0.0 },
+    { 0.0, 128.0, 128.0 },
+    { 0.0, 0.0, 128.0 },
+    { 255.0, 69.0, 0.0 }
+};
+
+new g_szColorName[COLOR_ENUM][] =  {
+    "Red",
+    "Pink",
+    "Orange",
+    "Yellow",
+    "Purple",
+    "Indigo",
+    "Black",
+    "Green",
+    "Blue",
+    "Aqua",
+    "Lime",
+    "Gold",
+    "Dark Red",
+    "Teal",
+    "Navy",
+    "Orange Red"
+};
+
 new g_Pointer[MULTYPLAY_CVARS];
 new g_Forward[FORWARDS_LIST];
 
@@ -142,7 +211,7 @@ new g_Cvar[CVAR_LIST];
 new g_BarrierEnt;
 
 new Float: g_fEntDist[MAX_PLAYERS +1];
-new TeamName:g_iTeam[MAX_PLAYERS +1], g_iCountTime, g_iOwnedEnt[MAX_PLAYERS +1], g_iZombieClass[MAX_PLAYERS +1];
+new TeamName:g_iTeam[MAX_PLAYERS +1], g_iCountTime, g_iOwnedEnt[MAX_PLAYERS +1], g_iZombieClass[MAX_PLAYERS +1], g_iPlayerColor[MAX_PLAYERS +1], g_iOwnedEntities[MAX_PLAYERS +1];
 new bool: g_bFirstSpawn[MAX_PLAYERS +1], bool: g_bSwapTeams, bool: g_bCanBuild, bool: g_bPrepTime, bool: g_bRoundEnded;
 new bool: g_bZombiesReleased;
 new Float: g_fOffset1[MAX_PLAYERS +1], Float: g_fOffset2[MAX_PLAYERS +1], Float: g_fOffset3[MAX_PLAYERS +1];
@@ -166,7 +235,7 @@ new g_SyncHud;
 new g_msgSendAudio;
 new g_hMsgSendAudio;
 
-new HookChain: g_hPMove;
+new HookChain: g_hPreThink;
 
 #define LockBlock(%1,%2)            (set_entvar(%1, var_iuser1, %2))
 #define UnlockBlock(%1)             (set_entvar(%1, var_iuser1, 0))
@@ -225,7 +294,12 @@ public plugin_init() {
     for(new i; i < sizeof(MENU_CMDS); i++) {
         register_clcmd(MENU_CMDS[i], "Zombie_Menu");
     }
-
+    for(new i; i < sizeof(COLOR_MENU_CMDS); i++) {
+        register_clcmd(COLOR_MENU_CMDS[i], "Color_Menu");
+    }
+    for(new i; i < sizeof(LOCK_BLOCK_CMDS); i++) {
+        register_clcmd(LOCK_BLOCK_CMDS[i], "LockBlockCmd");
+    }
     new const szBlockCallBack[] = "BlockRadioCmd";
     for(new i; i < sizeof(RADIO_CMDS); i++) {
             register_clcmd(RADIO_CMDS[i], szBlockCallBack);
@@ -237,8 +311,8 @@ public plugin_init() {
     set_msg_block(get_user_msgid("ClCorpse"), BLOCK_SET);
 
     g_SyncHud = CreateHudSyncObj();
-    g_BarrierEnt = find_ent_by_tname(NULLENT, "barrier");
-    //g_BarrierEnt = FindEntity("func_wall", "barrier");
+    //g_BarrierEnt = find_ent_by_tname(NULLENT, "barrier");
+    g_BarrierEnt = FindEntity("func_wall", "barrier");
 
     if(!g_BarrierEnt) {
         set_fail_state("There is no barrier on this map!");
@@ -284,7 +358,7 @@ public RoundEnd_Post(WinStatus:status, ScenarioEventEndRound:event) {
         return;
     }
 
-    DisableHookChain(g_hPMove);
+    DisableHookChain(g_hPreThink);
 
     g_bRoundEnded = true;
     g_bCanBuild = false;
@@ -338,13 +412,13 @@ public CSGameRules_RestartRound_Pre() {
     if(g_Cvar[RESET_ENT]) {
         new szClass[10], szTarget[7];
         for(new iEnt = MaxClients; iEnt < 1024; iEnt++) {
-            if(is_valid_ent(iEnt)) {
+            if(is_nullent(iEnt)) {
                 get_entvar(iEnt, var_classname, szClass, charsmax(szClass));
                 get_entvar(iEnt, var_targetname, szTarget, charsmax(szTarget));
 
                 if(iEnt != g_BarrierEnt && equal(szClass, "func_wall") && !equal(szTarget, "ignore")) {
                     set_entvar(iEnt, var_rendermode, kRenderNormal);
-                    entity_set_origin(iEnt, Float:{ 0.0, 0.0, 0.0 });
+                    engfunc(EngFunc_SetOrigin, iEnt, Float:{ 0.0, 0.0, 0.0 });
                 }
             }
         }
@@ -383,7 +457,7 @@ public CBasePlayer_DropPlayerItem_Pre(const id, const pszItemName[]) {
 
 public CBasePlayer_HasRestrictItem_Pre(id, ItemID:iItem, ItemRestType:iRestType) {
     if(IsConnected(id) && IsZombie(id)) {
-        SetHookChainReturn(ATYPE_BOOL, true); // ATYPE_INTEGER
+        SetHookChainReturn(ATYPE_BOOL, true);
         return HC_SUPERCEDE;
     }
 
@@ -476,7 +550,7 @@ public CBasePlayer_Killed_Post(iVictim, iKiller, iGibType) {
     }
 }
 
-public PM_Move_Pre(id) {
+public CBasePlayer_PreThink(id) {
     if(!IsAlive(id)) {
         return;
     }
@@ -523,12 +597,12 @@ public PM_Move_Pre(id) {
         ExecuteForward(g_Forward[FWD_PUSH_PULL], _, id, g_iOwnedEnt[id], 2);
     }
 
-    new iOrigin[POS], iLook[POS], Float:fOrigin[POS], Float:fLook[POS], Float:vMoveTo[POS], Float:fLength;
+    new Float:fvarOrigin[POS], Float:fvarViewOfs[POS], Float:fOrigin[POS], Float:fLook[POS], Float:vMoveTo[POS], Float:fLength;
 
-    get_user_origin(id, iOrigin, Origin_Eyes);
-    IVecFVec(iOrigin, fOrigin);
-    get_user_origin(id, iLook, Origin_AimEndEyes);
-    IVecFVec(iLook, fLook);
+    get_entvar(id, var_origin, fvarOrigin);
+    get_entvar(id, var_view_ofs, fvarViewOfs);
+    xs_vec_add(fvarOrigin, fvarViewOfs, fOrigin);
+    fm_get_aim_origin(id, fLook);
 
     fLength = get_distance_f(fLook, fOrigin);
 
@@ -541,7 +615,86 @@ public PM_Move_Pre(id) {
     vMoveTo[Z] = (fOrigin[Z] + (fLook[Z] - fOrigin[Z]) * g_fEntDist[id] / fLength) + g_fOffset3[id];
     vMoveTo[Z] -= floatfract(vMoveTo[Z]);
 
-    entity_set_origin(g_iOwnedEnt[id], vMoveTo);
+    engfunc(EngFunc_SetOrigin, g_iOwnedEnt[id], vMoveTo);
+}
+
+public CmdGrabMove(id) {
+    if(!g_bCanBuild || IsZombie(id)) {
+        return PLUGIN_HANDLED;
+    }
+
+    if(g_iOwnedEnt[id] && is_entity(g_iOwnedEnt[id])) {
+        CmdGrabStop(id);
+    }
+
+    new iEnt, iBody;
+    get_user_aiming(id, iEnt, iBody);
+
+    if(is_nullent(iEnt) || iEnt == g_BarrierEnt || !FClassnameIs(iEnt, "func_wall") /*|| IsAlive(iEnt)*/ || IsMovingEnt(iEnt)) {
+        return PLUGIN_HANDLED;
+    }
+
+    new szTarget[7];
+    get_entvar(iEnt, var_targetname, szTarget, charsmax(szTarget));
+
+    if(equal(szTarget, "ignore")) {
+        return PLUGIN_HANDLED;
+    }
+
+    ExecuteForward(g_Forward[FWD_GRAB_ENTITY_PRE], _, id, iEnt);
+
+    new Float:fOrigin[POS], Float:fAiming[POS];
+
+    fm_get_aim_origin(id, fAiming);
+    get_entvar(iEnt, var_origin, fOrigin);
+
+    g_fOffset1[id] = fOrigin[X] - fAiming[X];
+    g_fOffset2[id] = fOrigin[Y] - fAiming[Y];
+    g_fOffset3[id] = fOrigin[Z] - fAiming[Z];
+
+    g_fEntDist[id] = get_user_aiming(id, iEnt, iBody);
+
+    if(g_fEntDist[id] < MIN_MOVE_DISTANCE) {
+        g_fEntDist[id] = MIN_DIST_SET;
+    }
+
+    if(g_fEntDist[id] > MAX_MOVE_DISTANCE) {
+        return PLUGIN_HANDLED;
+    }
+
+    set_entvar(iEnt, var_rendermode, kRenderTransColor);
+    set_entvar(iEnt, var_rendercolor, g_fBlockColor[g_iPlayerColor[id]]);
+    set_entvar(iEnt, var_renderamt, 100.0);
+
+    rg_send_audio(id, g_szSound[BLOCK_GRAB]);
+
+    MovingEnt(iEnt);
+    SetEntMover(iEnt, id);
+    g_iOwnedEnt[id] = iEnt;
+
+    ExecuteForward(g_Forward[FWD_GRAB_ENTITY_POST], _, id, iEnt);
+
+    return PLUGIN_HANDLED;
+}
+
+public CmdGrabStop(id) {
+    if(!g_iOwnedEnt[id]) {
+        return;
+    }
+
+    new iEnt = g_iOwnedEnt[id];
+
+    ExecuteForward(g_Forward[FWD_DROP_ENTITY_PRE], _, id, iEnt);
+
+    set_entvar(iEnt, var_rendermode, kRenderNormal);
+
+    rg_send_audio(id, g_szSound[BLOCK_DROP]);
+
+    UnsetEntMover(iEnt);
+    g_iOwnedEnt[id] = 0;
+    UnmovingEnt(iEnt);
+
+    ExecuteForward(g_Forward[FWD_DROP_ENTITY_POST], _, id, iEnt);
 }
 
 public Ham_Item_Deploy_Post(weapon) {
@@ -556,7 +709,7 @@ public Ham_Item_Deploy_Post(weapon) {
 public BuildTime() {
     if(!g_bCanBuild) {
         g_bCanBuild = true;
-        EnableHookChain(g_hPMove);
+        EnableHookChain(g_hPreThink);
         ExecuteForward(g_Forward[FWD_BUILD_START], _, g_iCountTime);
     }
 
@@ -568,7 +721,7 @@ public BuildTime() {
     }
     else {
         g_bCanBuild = false;
-        DisableHookChain(g_hPMove);
+        DisableHookChain(g_hPreThink);
         remove_task(TASK_BUILDTIME);
         client_print(0, print_center, ""); // clear print_center
 
@@ -651,6 +804,80 @@ public Zombie_Menu_Handler(id, menu, item) {
     }
 }
 
+public Color_Menu(id){
+
+    new menu = menu_create(fmt("%L", LANG_PLAYER, "REBB_COLOR_MENU"), "Color_Menu_Handler");
+
+    for(new i; i < COLOR_ENUM; i++) {
+        menu_additem(menu, fmt("\w%s", g_szColorName[i]));
+    }
+
+    menu_setprop(menu, MPROP_EXIT, MEXIT_ALL);
+    menu_display(id, menu, 0);
+
+    return PLUGIN_HANDLED;
+}
+
+public Color_Menu_Handler(id, menu, item) {
+    menu_destroy(menu);
+
+    if(item == MENU_EXIT) {
+        return;
+    }
+
+    g_iPlayerColor[id] = item;
+
+    client_print_color(id, print_team_default, "%L ^4%s", LANG_PLAYER, "REBB_COLOR_PICK", g_szColorName[item]);
+}
+
+public LockBlockCmd(id){
+
+    if(!g_bCanBuild || IsZombie(id) || !g_Cvar[LOCK_BLOCKS]) {
+		return PLUGIN_HANDLED;
+    }
+
+    new iEnt, iBody;
+    get_user_aiming(id, iEnt, iBody);
+
+    if(is_nullent(iEnt) || iEnt == g_BarrierEnt || !FClassnameIs(iEnt, "func_wall") /*|| IsAlive(iEnt)*/ || IsMovingEnt(iEnt)) {
+        return PLUGIN_HANDLED;
+    }
+
+    new szTarget[7];
+    get_entvar(iEnt, var_targetname, szTarget, charsmax(szTarget));
+
+    if(equal(szTarget, "ignore")) {
+        return PLUGIN_HANDLED;
+    }
+    if (!BlockLocker(iEnt) && !IsMovingEnt(iEnt)) {
+        if (g_iOwnedEntities[id] < g_Cvar[MAX_LOCK_BLOCKS] || !g_Cvar[MAX_LOCK_BLOCKS]) {
+            LockBlock(iEnt, id);
+            g_iOwnedEntities[id]++;
+            set_entvar(iEnt, var_rendermode, kRenderTransColor);
+            set_entvar(iEnt, var_rendercolor, g_fBlockColor[g_iPlayerColor[id]]);
+                    
+            client_print_color(id, print_team_default, "%L [ %d / %d ]", LANG_SERVER, "REBB_LOCK_BLOCKS_UP", g_iOwnedEntities[id], g_Cvar[MAX_LOCK_BLOCKS]);
+        }
+        else if (g_iOwnedEntities[id] >= g_Cvar[MAX_LOCK_BLOCKS]) {
+            client_print_color(id, print_team_default, "%L", LANG_SERVER, "REBB_LOCK_BLOCKS_MAX", g_Cvar[MAX_LOCK_BLOCKS]);
+            }
+        }
+        else if (BlockLocker(iEnt)) {
+                if (BlockLocker(iEnt) == id) {
+                    g_iOwnedEntities[BlockLocker(iEnt)]--;
+                    set_entvar(iEnt, var_rendermode, kRenderNormal);
+                    
+                    client_print_color(BlockLocker(iEnt), print_team_default, "%L [ %d / %d ]", LANG_SERVER, "REBB_LOCK_BLOCKS_LOST", g_iOwnedEntities[BlockLocker(iEnt)], g_Cvar[MAX_LOCK_BLOCKS]);
+                    
+                    UnlockBlock(iEnt);
+                }
+                else {
+                    client_print_color(id, print_team_default, "%L", LANG_SERVER, "REBB_LOCK_BLOCKS_FAIL");
+                }
+        }
+        return PLUGIN_HANDLED;
+}
+
 public taskPlayerHud(iTaskId) {
     UpdateHUD(iTaskId - TASK_HEALTH);
 }
@@ -698,88 +925,6 @@ public Release_Zombies() {
     ExecuteForward(g_Forward[FWD_ZOMBIES_RELEASED]);
 }
 
-public CmdGrabMove(id) {
-    if(!g_bCanBuild || IsZombie(id)) {
-        return PLUGIN_HANDLED;
-    }
-
-    if(g_iOwnedEnt[id] && is_entity(g_iOwnedEnt[id])) {
-        CmdGrabStop(id);
-    }
-
-    new iEnt, iBody;
-    get_user_aiming(id, iEnt, iBody);
-
-    if(is_nullent(iEnt) || iEnt == g_BarrierEnt || !FClassnameIs(iEnt, "func_wall") /*|| IsAlive(iEnt)*/ || IsMovingEnt(iEnt)) {
-        return PLUGIN_HANDLED;
-    }
-
-    new szTarget[7];
-    get_entvar(iEnt, var_targetname, szTarget, charsmax(szTarget));
-
-    if(equal(szTarget, "ignore")) {
-        return PLUGIN_HANDLED;
-    }
-
-    ExecuteForward(g_Forward[FWD_GRAB_ENTITY_PRE], _, id, iEnt);
-
-    new Float:fOrigin[POS], iAiming[POS], Float:fAiming[POS];
-
-    get_user_origin(id, iAiming, Origin_AimEndEyes);
-    IVecFVec(iAiming, fAiming);
-
-    get_entvar(iEnt, var_origin, fOrigin);
-    log_amx("get_entvar(iEnt, var_origin, fOrigin) | fOrigin[X] = %f | fOrigin[Y] = %f | fOrigin[Z] = %f", fOrigin[X], fOrigin[Y], fOrigin[Z]);
-
-    g_fOffset1[id] = fOrigin[X] - fAiming[X];
-    g_fOffset2[id] = fOrigin[Y] - fAiming[Y];
-    g_fOffset3[id] = fOrigin[Z] - fAiming[Z];
-
-    g_fEntDist[id] = get_user_aiming(id, iEnt, iBody);
-
-    if(g_fEntDist[id] < MIN_MOVE_DISTANCE) {
-        g_fEntDist[id] = MIN_DIST_SET;
-    }
-
-    if(g_fEntDist[id] > MAX_MOVE_DISTANCE) {
-        return PLUGIN_HANDLED;
-    }
-
-    set_entvar(iEnt, var_rendermode, kRenderTransColor);
-    set_entvar(iEnt, var_rendercolor, Float:{000.0, 150.0, 000.0});
-    set_entvar(iEnt, var_renderamt, 100.0);
-
-    rg_send_audio(id, g_szSound[BLOCK_GRAB]);
-
-    MovingEnt(iEnt);
-    SetEntMover(iEnt, id);
-    g_iOwnedEnt[id] = iEnt;
-
-    ExecuteForward(g_Forward[FWD_GRAB_ENTITY_POST], _, id, iEnt);
-
-    return PLUGIN_HANDLED;
-}
-
-public CmdGrabStop(id) {
-    if(!g_iOwnedEnt[id]) {
-        return;
-    }
-
-    new iEnt = g_iOwnedEnt[id];
-
-    ExecuteForward(g_Forward[FWD_DROP_ENTITY_PRE], _, id, iEnt);
-
-    set_entvar(iEnt, var_rendermode, kRenderNormal);
-
-    rg_send_audio(id, g_szSound[BLOCK_DROP]);
-
-    UnsetEntMover(iEnt);
-    g_iOwnedEnt[id] = 0;
-    UnmovingEnt(iEnt);
-
-    ExecuteForward(g_Forward[FWD_DROP_ENTITY_POST], _, id, iEnt);
-}
-
 RegisterHooks() {
     RegisterHookChain(RG_RoundEnd, "RoundEnd_Pre", false);
     RegisterHookChain(RG_RoundEnd, "RoundEnd_Post", true);
@@ -790,7 +935,7 @@ RegisterHooks() {
     RegisterHookChain(RG_CBasePlayer_Spawn, "CBasePlayer_Spawn_Post", true);
     RegisterHookChain(RG_CBasePlayer_ResetMaxSpeed, "CBasePlayer_ResetMaxSpeed_Post", true);
     RegisterHookChain(RG_CBasePlayer_Killed, "CBasePlayer_Killed_Post", true);
-    g_hPMove = RegisterHookChain(RG_PM_Move, "PM_Move_Pre", false);
+    g_hPreThink = RegisterHookChain(RG_CBasePlayer_PreThink, "CBasePlayer_PreThink", false);
 
     RegisterHam(Ham_Item_Deploy, "weapon_knife", "Ham_Item_Deploy_Post", true);
 }
@@ -874,6 +1019,22 @@ RegisterCvars() {
             .description = GetCvarDesc("REBB_RESET_ENT")
         ), g_Cvar[RESET_ENT]
     );
+    bind_pcvar_num(
+            create_cvar(
+            .name = "rebb_lock_blocks",
+            .string = "1",
+            .flags = FCVAR_NONE,
+            .description = GetCvarDesc("REBB_LOCK_BLOCKS")
+        ), g_Cvar[LOCK_BLOCKS]
+    );
+    bind_pcvar_num(
+            create_cvar(
+            .name = "rebb_max_lock_blocks",
+            .string = "10",
+            .flags = FCVAR_NONE,
+            .description = GetCvarDesc("REBB_MAX_LOCK_BLOCKS")
+        ), g_Cvar[MAX_LOCK_BLOCKS]
+    );
 }
 
 GetCvarsPointers() {
@@ -893,7 +1054,7 @@ public BlockRadioCmd() {
     return PLUGIN_HANDLED_MAIN;
 }
 
-/*FindEntity(const entityname[], const targetname[]) {
+FindEntity(const entityname[], const targetname[]) {
     new ent, name[MAX_NAME_LENGTH];
     while((ent = rg_find_ent_by_class(ent, entityname))) {
         get_entvar(ent, var_targetname, name, charsmax(name));
@@ -903,7 +1064,7 @@ public BlockRadioCmd() {
     }
 
     return NULLENT;
-}*/
+}
 
 public plugin_natives(){
     register_native("rebb_register_zombie_class", "native_register_zombie_class");
