@@ -113,7 +113,8 @@ enum any:SOUND_ENUM {
 };
 
 enum any:COLOR_ENUM {
-    RED = 0,
+    DEFAULT,
+    RED,
     PINK,
     ORANGE,
     YELLOW,
@@ -163,7 +164,7 @@ new g_szSoundName[SOUND_ENUM][] = {
 };
 
 new Float:g_fBlockColor[COLOR_ENUM][] = {
-    
+    { 000.0, 150.0, 000.0 },
     { 255.0, 0.0, 0.0 },
     { 255.0, 20.0, 147.0 },
     { 255.0, 165.0, 0.0 },
@@ -183,6 +184,7 @@ new Float:g_fBlockColor[COLOR_ENUM][] = {
 };
 
 new g_szColorName[COLOR_ENUM][] =  {
+    "Default",
     "Red",
     "Pink",
     "Orange",
@@ -205,6 +207,7 @@ new g_Pointer[MULTYPLAY_CVARS];
 new g_Forward[FORWARDS_LIST];
 
 new g_Cvar[CVAR_LIST];
+new g_iColorOwner[COLOR_ENUM];
 
 new g_BarrierEnt;
 
@@ -342,6 +345,7 @@ public client_disconnected(id) {
 
     g_bFirstSpawn[id] = true;
     g_iZombieClass[id] = 0;
+    g_iPlayerColor[id] = 0;
 
     remove_task(id+TASK_RESPAWN);
     remove_task(id+TASK_HEALTH);
@@ -425,23 +429,25 @@ public CSGameRules_RestartRound_Pre() {
     set_entvar(g_BarrierEnt, var_renderamt, 150.0);
     
     arrayset(g_iOwnedEntities, 0, MAX_PLAYERS +1);
+    arrayset(g_iPlayerColor, 0, MAX_PLAYERS +1);
+    arrayset(g_iColorOwner, 0, COLOR_ENUM);
 
     if(g_Cvar[RESET_ENT]) {
         new szClass[10], szTarget[7];
         for(new iEnt = MaxClients; iEnt < 1024; iEnt++) {
-            if(is_nullent(iEnt)) {
+            if(is_entity(iEnt)) {
                 get_entvar(iEnt, var_classname, szClass, charsmax(szClass));
                 get_entvar(iEnt, var_targetname, szTarget, charsmax(szTarget));
 
-                if(!BlockLocker(iEnt) && iEnt != g_BarrierEnt && equal(szClass, "func_wall") && !equal(szTarget, "ignore")) {
+                if(g_Cvar[LOCK_BLOCKS] && BlockLocker(iEnt) && iEnt != g_BarrierEnt && equal(szClass, "func_wall") && !equal(szTarget, "ignore")) {
+                    UnlockBlock(iEnt);
                     set_entvar(iEnt, var_rendermode, kRenderNormal);
                     engfunc(EngFunc_SetOrigin, iEnt, Float:{ 0.0, 0.0, 0.0 });
                     
                     UnsetLastMover(iEnt);
                     UnsetEntMover(iEnt);
                 }
-                else if(g_Cvar[LOCK_BLOCKS] && BlockLocker(iEnt)) {
-                    UnlockBlock(iEnt);
+                else if(!BlockLocker(iEnt) && iEnt != g_BarrierEnt && equal(szClass, "func_wall") && !equal(szTarget, "ignore")) {
                     set_entvar(iEnt, var_rendermode, kRenderNormal);
                     engfunc(EngFunc_SetOrigin, iEnt, Float:{ 0.0, 0.0, 0.0 });
                     
@@ -718,7 +724,7 @@ public CmdGrabStop(id) {
 
     ExecuteForward(g_Forward[FWD_DROP_ENTITY_PRE], _, id, iEnt);
 
-    if(g_Cvar[LOCK_BLOCKS]) {
+    if(g_Cvar[LOCK_BLOCKS] && BlockLocker(iEnt)) {
         set_entvar(iEnt, var_rendermode, kRenderTransColor);
         set_entvar(iEnt, var_rendercolor, g_fBlockColor[g_iPlayerColor[id]]);
         set_entvar(iEnt, var_renderamt, 255.0);
@@ -848,8 +854,8 @@ public Color_Menu(id){
 
     new menu = menu_create(fmt("%L", LANG_PLAYER, "REBB_COLOR_MENU"), "Color_Menu_Handler");
 
-    for(new i; i < COLOR_ENUM; i++) {
-        menu_additem(menu, fmt("\w%s", g_szColorName[i]));
+	for(new i = 1; i < COLOR_ENUM; i++) {
+        menu_additem(menu, fmt("\w%s ^t^t^t\y%n", g_szColorName[i], g_iColorOwner[i]));
     }
 
     menu_setprop(menu, MPROP_EXIT, MEXIT_ALL);
@@ -864,10 +870,17 @@ public Color_Menu_Handler(id, menu, item) {
     if(item == MENU_EXIT) {
         return;
     }
-
-    g_iPlayerColor[id] = item;
-
-    client_print_color(id, print_team_default, "%L ^4%s", LANG_PLAYER, "REBB_COLOR_PICK", g_szColorName[item]);
+	
+	item++;
+	
+    if(!g_iColorOwner[item]) {
+        g_iPlayerColor[id] = item;
+        g_iColorOwner[item] = id;
+        client_print_color(id, print_team_default, "%L ^4%s", LANG_PLAYER, "REBB_COLOR_PICK", g_szColorName[item]);
+    }
+    else {
+        client_print_color(id, print_team_default, "^4%s %L", LANG_PLAYER, "REBB_COLOR_FAIL", g_szColorName[item]);
+    }
 }
 
 public LockBlockCmd(id){
@@ -895,7 +908,7 @@ public LockBlockCmd(id){
             g_iOwnedEntities[id]++;
             set_entvar(iEnt, var_rendermode, kRenderTransColor);
             set_entvar(iEnt, var_rendercolor, g_fBlockColor[g_iPlayerColor[id]]);
-            set_entvar(iEnt, var_renderamt, 255.0);
+            //set_entvar(iEnt, var_renderamt, 255.0);
 
             client_print_color(id, print_team_default, "%L [ %d / %d ]", LANG_SERVER, "REBB_LOCK_BLOCKS_UP", g_iOwnedEntities[id], g_Cvar[MAX_LOCK_BLOCKS]);
         }
