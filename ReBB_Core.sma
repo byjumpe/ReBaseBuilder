@@ -25,6 +25,7 @@ Thx for the mod idea and original code
 
 #include <amxmodx>
 #include <amxmisc>
+#include <fakemeta>
 #include <fakemeta_util>
 #include <hamsandwich>
 #include <reapi>
@@ -34,7 +35,7 @@ Thx for the mod idea and original code
 // Автосоздание конфига
 #define AUTO_CFG
 
-new const VERSION[] = "0.3.0 Alpha";
+new const VERSION[] = "0.3.3 Alpha";
 
 // List of client commands that open zombie class menu
 new const MENU_CMDS[][] = {
@@ -92,7 +93,8 @@ enum any:CVAR_LIST {
     BLOCK_DROP_WEAPON,
     RESET_ENT,
     LOCK_BLOCKS,
-    MAX_LOCK_BLOCKS
+    MAX_LOCK_BLOCKS,
+    SHOW_HUD_MOVERS
 };
 
 enum any:MULTYPLAY_CVARS {
@@ -207,7 +209,7 @@ new g_Pointer[MULTYPLAY_CVARS];
 new g_Forward[FORWARDS_LIST];
 
 new g_Cvar[CVAR_LIST];
-new g_iColorOwner[COLOR_ENUM];
+new g_iColorOwner[MAX_PLAYERS +1];
 
 new g_BarrierEnt;
 
@@ -220,6 +222,7 @@ new Float: g_fOffset1[MAX_PLAYERS +1], Float: g_fOffset2[MAX_PLAYERS +1], Float:
 new g_szSound[SOUND_ENUM][PLATFORM_MAX_PATH];
 
 new bool:g_bCanRegister;
+new g_FWShowHudMovers;
 
 new Array: g_ZombieName;
 new Array: g_ZombieInfo;
@@ -231,7 +234,7 @@ new Array: g_ZombieGravity;
 new Array: g_ZombieFlags;
 new g_ClassesCount;
 
-new g_SyncHud;
+new g_SyncHud, g_HudShowMovers;
 
 new g_msgSendAudio;
 new g_hMsgSendAudio;
@@ -248,6 +251,7 @@ new HookChain: g_hPreThink;
 
 #define SetEntMover(%1,%2)          (set_entvar(%1, var_iuser3, %2))
 #define UnsetEntMover(%1)           (set_entvar(%1, var_iuser3, 0))
+#define GetEntMover(%1)           (get_entvar(%1, var_iuser3))
 
 #define SetLastMover(%1,%2)         (set_entvar(%1, var_iuser4, %2))
 #define UnsetLastMover(%1)          (set_entvar(%1, var_iuser4, 0))
@@ -287,7 +291,7 @@ public plugin_precache() {
 }
 
 public plugin_init() {
-    register_dictionary("re_basebuilder.txt"); // TODO
+    register_dictionary("re_basebuilder.txt");
 
     RegisterHooks();
     RegisterCvars();
@@ -316,7 +320,7 @@ public plugin_init() {
     set_msg_block(get_user_msgid("ClCorpse"), BLOCK_SET);
 
     g_SyncHud = CreateHudSyncObj();
-    //g_BarrierEnt = find_ent_by_tname(NULLENT, "barrier");
+    g_HudShowMovers = CreateHudSyncObj();
     g_BarrierEnt = FindEntity("func_wall", "barrier");
 
     if(!g_BarrierEnt) {
@@ -430,7 +434,7 @@ public CSGameRules_RestartRound_Pre() {
     
     arrayset(g_iOwnedEntities, 0, MAX_PLAYERS +1);
     arrayset(g_iPlayerColor, 0, MAX_PLAYERS +1);
-    arrayset(g_iColorOwner, 0, COLOR_ENUM);
+    arrayset(g_iColorOwner, 0, MAX_PLAYERS +1);
 
     if(g_Cvar[RESET_ENT]) {
         new szClass[10], szTarget[7];
@@ -755,6 +759,9 @@ public Ham_Item_Deploy_Post(weapon) {
 public BuildTime() {
     if(!g_bCanBuild) {
         g_bCanBuild = true;
+        if(g_Cvar[SHOW_HUD_MOVERS] && g_FWShowHudMovers == 0) {
+            g_FWShowHudMovers = register_forward(FM_TraceLine, "FW_Traceline", 1);
+        }
         EnableHookChain(g_hPreThink);
         ExecuteForward(g_Forward[FWD_BUILD_START], _, g_iCountTime);
     }
@@ -803,7 +810,10 @@ public BuildTime() {
 
 public PrepTime() {
     g_iCountTime--;
-
+    
+    if(g_FWShowHudMovers != 0) {
+        unregister_forward(FM_TraceLine, g_FWShowHudMovers);
+    }
     if(g_iCountTime) {
         new iMins = g_iCountTime / SECONDS_IN_MINUTE, iSecs = g_iCountTime % SECONDS_IN_MINUTE;
         client_print(0, print_center, "%L %02d:%02d", LANG_PLAYER, "REBB_PREP_TIME", iMins, iSecs);
@@ -828,7 +838,9 @@ public Zombie_Menu(id){
         menu_additem(menu, fmt("\w%s \r%s%s", name, info, flag == ADMIN_ALL ? "" : " \y[VIP]"), .paccess = flag);
     }
 
-    menu_setprop(menu, MPROP_EXIT, MEXIT_ALL);
+    menu_setprop(menu , MPROP_NEXTNAME, fmt("%L", LANG_PLAYER, "REBB_MENU_NEXT"));
+    menu_setprop(menu , MPROP_BACKNAME, fmt("%L", LANG_PLAYER, "REBB_MENU_BACK"));
+    menu_setprop(menu , MPROP_EXITNAME, fmt("%L", LANG_PLAYER, "REBB_MENU_EXIT"));
     menu_display(id, menu, 0);
 
     return PLUGIN_HANDLED;
@@ -851,14 +863,15 @@ public Zombie_Menu_Handler(id, menu, item) {
 }
 
 public Color_Menu(id){
-
     new menu = menu_create(fmt("%L", LANG_PLAYER, "REBB_COLOR_MENU"), "Color_Menu_Handler");
 
-	for(new i = 1; i < COLOR_ENUM; i++) {
-        menu_additem(menu, fmt("\w%s ^t^t^t\y%n", g_szColorName[i], g_iColorOwner[i]));
+    for(new i = 1; i < COLOR_ENUM; i++) {
+        menu_additem(menu, fmt("\w%s", g_szColorName[i]));
     }
 
-    menu_setprop(menu, MPROP_EXIT, MEXIT_ALL);
+    menu_setprop(menu , MPROP_NEXTNAME, fmt("%L", LANG_PLAYER, "REBB_MENU_NEXT"));
+    menu_setprop(menu , MPROP_BACKNAME, fmt("%L", LANG_PLAYER, "REBB_MENU_BACK"));
+    menu_setprop(menu , MPROP_EXITNAME, fmt("%L", LANG_PLAYER, "REBB_MENU_EXIT"));
     menu_display(id, menu, 0);
 
     return PLUGIN_HANDLED;
@@ -870,17 +883,11 @@ public Color_Menu_Handler(id, menu, item) {
     if(item == MENU_EXIT) {
         return;
     }
-	
-	item++;
-	
-    if(!g_iColorOwner[item]) {
-        g_iPlayerColor[id] = item;
-        g_iColorOwner[item] = id;
-        client_print_color(id, print_team_default, "%L ^4%s", LANG_PLAYER, "REBB_COLOR_PICK", g_szColorName[item]);
-    }
-    else {
-        client_print_color(id, print_team_default, "^4%s %L", LANG_PLAYER, "REBB_COLOR_FAIL", g_szColorName[item]);
-    }
+    
+    item++;
+
+    g_iPlayerColor[id] = item;
+    client_print_color(id, print_team_default, "%L ^4%s", LANG_PLAYER, "REBB_COLOR_PICK", g_szColorName[item]);
 }
 
 public LockBlockCmd(id){
@@ -908,7 +915,7 @@ public LockBlockCmd(id){
             g_iOwnedEntities[id]++;
             set_entvar(iEnt, var_rendermode, kRenderTransColor);
             set_entvar(iEnt, var_rendercolor, g_fBlockColor[g_iPlayerColor[id]]);
-            //set_entvar(iEnt, var_renderamt, 255.0);
+            set_entvar(iEnt, var_renderamt, 255.0);
 
             client_print_color(id, print_team_default, "%L [ %d / %d ]", LANG_SERVER, "REBB_LOCK_BLOCKS_UP", g_iOwnedEntities[id], g_Cvar[MAX_LOCK_BLOCKS]);
         }
@@ -929,6 +936,54 @@ public LockBlockCmd(id){
             client_print_color(id, print_team_default, "%L", LANG_SERVER, "REBB_LOCK_BLOCKS_FAIL");
          }
     }
+    return PLUGIN_HANDLED;
+}
+
+public FW_Traceline(Float:start[3], Float:end[3], conditions, id, trace) {
+    if(!IsAlive(id)) {
+        return PLUGIN_HANDLED;
+    }
+    
+    new iEnt = get_tr2(trace, TR_pHit);
+
+    if(is_entity(iEnt)) {
+        new iEnt, iBody;
+        get_user_aiming(id, iEnt, iBody);
+        
+        new szClass[10], szTarget[7];
+        get_entvar(iEnt, var_classname, szClass, charsmax(szClass));
+        get_entvar(iEnt, var_targetname, szTarget, charsmax(szTarget));
+        if(equal(szClass, "func_wall") && !equal(szTarget, "ignore") && iEnt != g_BarrierEnt && g_Cvar[SHOW_HUD_MOVERS]) {
+            if(g_bCanBuild) {
+                set_hudmessage(0, 50, 255, -1.0, 0.55, 1, 0.01, 3.0, 0.01, 0.01);
+                if (!BlockLocker(iEnt)) {
+                    if (GetEntMover(iEnt)) {
+                        if (!GetLastMover(iEnt)) {
+                            ShowSyncHudMsg(id, g_HudShowMovers, "%L", LANG_PLAYER, "REBB_HUD_GET_MOVER", GetEntMover(iEnt));
+                        }
+                    }
+                    if (GetLastMover(iEnt)) {
+                        if (!GetEntMover(iEnt)) {
+                            ShowSyncHudMsg(id, g_HudShowMovers, "%L", LANG_PLAYER, "REBB_HUD_GET_LAST_MOVER", GetLastMover(iEnt));
+                        }
+                    }
+                    if (GetEntMover(iEnt) && GetLastMover(iEnt)) {
+                        ShowSyncHudMsg(id, g_HudShowMovers, "%L", LANG_PLAYER, "REBB_HUD_GET_MOVER_AND_LAST_MOVER", GetEntMover(iEnt), GetLastMover(iEnt));
+                    }
+                    else if (!GetEntMover(iEnt) && !GetLastMover(iEnt)) {
+                        ShowSyncHudMsg(id, g_HudShowMovers, "%L", LANG_PLAYER, "REBB_HUD_BLOCK_NOT_MOVE");
+                    }
+                }
+                else {
+                    ShowSyncHudMsg(id, g_HudShowMovers, "%L", LANG_PLAYER, "REBB_HUD_BLOCK_OWNER", BlockLocker(iEnt));
+                }
+            }
+        }
+    }
+    else {
+        ClearSyncHud(id, g_HudShowMovers);
+    }
+
     return PLUGIN_HANDLED;
 }
 
@@ -1088,6 +1143,14 @@ RegisterCvars() {
             .flags = FCVAR_NONE,
             .description = GetCvarDesc("REBB_MAX_LOCK_BLOCKS")
         ), g_Cvar[MAX_LOCK_BLOCKS]
+    );
+    bind_pcvar_num(
+            create_cvar(
+            .name = "rebb_show_hud_movers",
+            .string = "1",
+            .flags = FCVAR_NONE,
+            .description = GetCvarDesc("REBB_SHOW_HUD_MOVERS")
+        ), g_Cvar[SHOW_HUD_MOVERS]
     );
 }
 
