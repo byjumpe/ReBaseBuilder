@@ -35,7 +35,7 @@ Thx for the mod idea and original code
 // Автосоздание конфига
 #define AUTO_CFG
 
-new const VERSION[] = "0.3.3 Alpha";
+new const VERSION[] = "0.3.5 Alpha";
 
 // List of client commands that open zombie class menu
 new const MENU_CMDS[][] = {
@@ -100,7 +100,7 @@ enum any:CVAR_LIST {
 enum any:MULTYPLAY_CVARS {
     MP_BUYTIME,
     MP_ROUNDOVER,
-    MP_BUY_ANYWHERE
+    //MP_BUY_ANYWHERE
     //MP_ITEM_STAYTIME
 };
 
@@ -151,7 +151,7 @@ new const g_HudColor[COLOR] = { 255, 0, 0 };
 new const g_MpCvars[MULTYPLAY_CVARS][] = {
     "mp_buytime",
     "mp_roundover",
-    "mp_buy_anywhere"
+    //"mp_buy_anywhere"
     //"mp_item_staytime"
 };
 
@@ -530,6 +530,9 @@ public CBasePlayer_Spawn_Post(id) {
 
     if(!IsZombie(id)) {
         rg_reset_user_model(id, true);
+        if(g_bPrepTime){
+            rebb_open_guns_menu(id);
+        }
     }
     else {
         if(g_bFirstSpawn[id]) {
@@ -728,14 +731,7 @@ public CmdGrabStop(id) {
 
     ExecuteForward(g_Forward[FWD_DROP_ENTITY_PRE], _, id, iEnt);
 
-    if(g_Cvar[LOCK_BLOCKS] && BlockLocker(iEnt)) {
-        set_entvar(iEnt, var_rendermode, kRenderTransColor);
-        set_entvar(iEnt, var_rendercolor, g_fBlockColor[g_iPlayerColor[id]]);
-        set_entvar(iEnt, var_renderamt, 255.0);
-    }
-    else {
-        set_entvar(iEnt, var_rendermode, kRenderNormal);
-    }
+    set_entvar(iEnt, var_rendermode, kRenderNormal);
 
     rg_send_audio(id, g_szSound[BLOCK_DROP]);
 
@@ -885,9 +881,22 @@ public Color_Menu_Handler(id, menu, item) {
     }
     
     item++;
+    
+    new players[MAX_PLAYERS], count, player, szColorOwner[MAX_NAME_LENGTH];
+    get_players(players, count);
 
-    g_iPlayerColor[id] = item;
-    client_print_color(id, print_team_default, "%L ^4%s", LANG_PLAYER, "REBB_COLOR_PICK", g_szColorName[item]);
+    for(new i; i < count; i++) {
+        player = players[i];
+        get_user_name(player, szColorOwner, charsmax(szColorOwner));
+    }
+    if(g_iColorOwner[player] != item) {
+        g_iPlayerColor[id] = item;
+        g_iColorOwner[id] = item;
+        client_print_color(id, print_team_default, "%L ^4%s", LANG_PLAYER, "REBB_COLOR_PICK", g_szColorName[item]);
+    }
+    else {
+        client_print_color(id, print_team_default, "%L ^4%s", LANG_PLAYER, "REBB_COLOR_FAIL", g_szColorName[item], szColorOwner);
+    }
 }
 
 public LockBlockCmd(id){
@@ -913,9 +922,6 @@ public LockBlockCmd(id){
         if(g_iOwnedEntities[id] < g_Cvar[MAX_LOCK_BLOCKS] || !g_Cvar[MAX_LOCK_BLOCKS]) {
             LockBlock(iEnt, id);
             g_iOwnedEntities[id]++;
-            set_entvar(iEnt, var_rendermode, kRenderTransColor);
-            set_entvar(iEnt, var_rendercolor, g_fBlockColor[g_iPlayerColor[id]]);
-            set_entvar(iEnt, var_renderamt, 255.0);
 
             client_print_color(id, print_team_default, "%L [ %d / %d ]", LANG_SERVER, "REBB_LOCK_BLOCKS_UP", g_iOwnedEntities[id], g_Cvar[MAX_LOCK_BLOCKS]);
         }
@@ -926,7 +932,6 @@ public LockBlockCmd(id){
     else if(BlockLocker(iEnt)) {
          if(BlockLocker(iEnt) == id) {
             g_iOwnedEntities[BlockLocker(iEnt)]--;
-            set_entvar(iEnt, var_rendermode, kRenderNormal);
 
             client_print_color(BlockLocker(iEnt), print_team_default, "%L [ %d / %d ]", LANG_SERVER, "REBB_LOCK_BLOCKS_LOST", g_iOwnedEntities[BlockLocker(iEnt)], g_Cvar[MAX_LOCK_BLOCKS]);
 
@@ -943,7 +948,10 @@ public FW_Traceline(Float:start[3], Float:end[3], conditions, id, trace) {
     if(!IsAlive(id)) {
         return PLUGIN_HANDLED;
     }
-    
+    if(IsZombie(id)) {
+        return PLUGIN_HANDLED;
+    }
+
     new iEnt = get_tr2(trace, TR_pHit);
 
     if(is_entity(iEnt)) {
@@ -1161,9 +1169,9 @@ GetCvarsPointers() {
 }
 
 SetCvarsValues() {
-    set_pcvar_num(g_Pointer[MP_BUYTIME], -1);
+    set_pcvar_num(g_Pointer[MP_BUYTIME], 0);
     set_pcvar_num(g_Pointer[MP_ROUNDOVER], 1);
-    set_pcvar_num(g_Pointer[MP_BUY_ANYWHERE], 3);
+    //set_pcvar_num(g_Pointer[MP_BUY_ANYWHERE], 3);
     //set_pcvar_num(g_Pointer[MP_ITEM_STAYTIME], 0);
 }
 
@@ -1183,7 +1191,7 @@ FindEntity(const entityname[], const targetname[]) {
     return NULLENT;
 }
 
-public plugin_natives(){
+public plugin_natives() {
     register_native("rebb_register_zombie_class", "native_register_zombie_class");
     register_native("rebb_get_class_id", "native_zombie_get_class_id");
     register_native("rebb_is_building_phase", "native_is_building_phase");
