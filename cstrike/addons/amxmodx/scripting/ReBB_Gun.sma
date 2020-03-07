@@ -41,11 +41,12 @@ new g_szSecondaryWeapons[MAX_SECONDARY_WEAPONS +1][WeaponInfo];
 new g_iPrimaryWeapons,
     g_iSecondaryWeapons;
 
+new const REBB_MOD_DIR_NAME[] = "ReBaseBuilder";
 new const g_szFileName[] = "rebb_guns_menu.ini";
 
 public plugin_init(){
 
-    register_plugin("[ReBB] Guns Menu", "0.5.0", "ReBB");
+    register_plugin("[ReBB] Guns Menu", "0.5.1", "ReBB");
     
     for(new i; i < sizeof(GUNS_CMDS); i++) {
         register_clcmd(GUNS_CMDS[i], "Guns_Menu");
@@ -57,7 +58,7 @@ public plugin_init(){
 ReadGunsFile() {
     new szPath[PLATFORM_MAX_PATH];
     get_localinfo("amxx_configsdir", szPath, charsmax(szPath));
-    format(szPath, charsmax(szPath), "%s/%s", szPath, g_szFileName);
+    format(szPath, charsmax(szPath), "%s/plugins/%s/%s", szPath, REBB_MOD_DIR_NAME, g_szFileName);
 
     new iFile = fopen(szPath, "rt");
 
@@ -159,6 +160,9 @@ public Guns_Menu_Handler(id, menu, item) {
     }
 
     item++;
+    if(rebb_is_building_phase() || rebb_is_zombies_released() || IsZombie(id)) {
+        return;
+    }
     switch(item) {
         case EQUIPMENT_PRIMARY: {
              Primary_Menu(id);
@@ -170,7 +174,7 @@ public Guns_Menu_Handler(id, menu, item) {
 }
 
 public Primary_Menu(id){
-    if(rebb_is_building_phase() || rebb_is_zombies_released()) {
+    if(rebb_is_building_phase() || rebb_is_zombies_released() || IsZombie(id)) {
         return PLUGIN_HANDLED;
     }
 
@@ -196,6 +200,9 @@ public Primary_Menu_Handler(id, menu, item) {
     }
     
     item++;
+    if(rebb_is_building_phase() || rebb_is_zombies_released() || IsZombie(id)) {
+        return;
+    }
     new iMoney = get_member(id, m_iAccount);
     if(iMoney < g_szPrimaryWeapons[item][WEAPON_COST]){
         client_print_color(id, print_team_red, "^3%L", LANG_PLAYER, "REBB_GUNS_BUY_FAIL");
@@ -210,14 +217,14 @@ public Primary_Menu_Handler(id, menu, item) {
 }
 
 public Secondary_Menu(id){
-    if(rebb_is_building_phase() || rebb_is_zombies_released()) {
+    if(rebb_is_building_phase() || rebb_is_zombies_released() || IsZombie(id)) {
         return PLUGIN_HANDLED;
     }
 
     new menu = menu_create(fmt("%L", LANG_PLAYER, "REBB_SECONDARY_MENU"), "Secondary_Menu_Handler");
 
     for(new i = 1; i <= g_iSecondaryWeapons; i++) {
-		menu_additem(menu, fmt("\w%s \y^t^t%d$", g_szSecondaryWeapons[i][WEAPON_NAME], g_szSecondaryWeapons[i][WEAPON_COST]));
+        menu_additem(menu, fmt("\w%s \y^t^t%d$", g_szSecondaryWeapons[i][WEAPON_NAME], g_szSecondaryWeapons[i][WEAPON_COST]));
     }
 
     menu_setprop(menu , MPROP_NEXTNAME, fmt("%L", LANG_PLAYER, "REBB_MENU_NEXT"));
@@ -236,7 +243,9 @@ public Secondary_Menu_Handler(id, menu, item) {
     }
     
     item++;
-
+    if(rebb_is_building_phase() || rebb_is_zombies_released() || IsZombie(id)) {
+        return;
+    }
     new iMoney = get_member(id, m_iAccount);
     if(iMoney < g_szSecondaryWeapons[item][WEAPON_COST]){
         client_print_color(id, print_team_red, "^3%L", LANG_PLAYER, "REBB_GUNS_BUY_FAIL");

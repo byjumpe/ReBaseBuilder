@@ -1,5 +1,5 @@
 [ru]
-REBB_HUMAN_WIN = ЛЮДИ ПОБЕДИЛИ!
+REBB_BUILDERS_WIN = СТРОИТЕЛИ ПОБЕДИЛИ!
 REBB_ZOMBIE_WIN = ЗОМБИ ПОБЕДИЛИ!
 REBB_ZOMBIE_RESPAWN = Вы воскреснете через %.0f секунд
 REBB_INFECTION = Инфекция теперь в крови игрока: %n

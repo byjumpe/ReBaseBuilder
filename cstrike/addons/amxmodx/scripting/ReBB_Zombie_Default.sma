@@ -6,7 +6,7 @@
 new const ZombieName[] = { "Зомби" };
 new const ZombieInfo[] = { "Обычный" };
 
-new const ZombieModel[] = { "rebb_def" };
+new const ZombieModel[] = { "rebb_default" };
 new const ZombieHandModel[] = { "v_rebb_def" };
 const Float: ZombieHP = 3000.0;
 const Float: ZombieSpeed = 280.0;

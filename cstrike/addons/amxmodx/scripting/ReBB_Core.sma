@@ -35,7 +35,7 @@ Thx for the mod idea and original code
 // Автосоздание конфига
 #define AUTO_CFG
 
-new const VERSION[] = "0.3.5 Alpha";
+new const VERSION[] = "0.3.10 Alpha";
 
 // List of client commands that open zombie class menu
 new const MENU_CMDS[][] = {
@@ -61,7 +61,13 @@ new const RADIO_CMDS[][] = {
     "radio3"
 };
 
+new const REBB_MOD_DIR_NAME[] = "ReBaseBuilder";
+new const CONFIG_NAME[] = "rebb_sounds.ini";
+
+const MAX_SOUNDS = 15;
+
 #define MAX_BUFFER_INFO 128
+const MAX_BUFFER_LENGTH = 128;
 
 const Float:MAX_MOVE_DISTANCE = 768.0;
 const Float:MIN_MOVE_DISTANCE = 32.0;
@@ -100,18 +106,6 @@ enum any:CVAR_LIST {
 enum any:MULTYPLAY_CVARS {
     MP_BUYTIME,
     MP_ROUNDOVER,
-    //MP_BUY_ANYWHERE
-    //MP_ITEM_STAYTIME
-};
-
-enum any:SOUND_ENUM {
-    ZOMBIE_WIN,
-    HUMAN_WIN,
-
-    ZOMBIE_RELEASE,
-
-    BLOCK_GRAB,
-    BLOCK_DROP
 };
 
 enum any:COLOR_ENUM {
@@ -151,18 +145,6 @@ new const g_HudColor[COLOR] = { 255, 0, 0 };
 new const g_MpCvars[MULTYPLAY_CVARS][] = {
     "mp_buytime",
     "mp_roundover",
-    //"mp_buy_anywhere"
-    //"mp_item_staytime"
-};
-
-new g_szSoundName[SOUND_ENUM][] = {
-    "zombie_win",
-    "human_win",
-
-    "zombie_release",
-
-    "block_grab",
-    "block_drop"
 };
 
 new Float:g_fBlockColor[COLOR_ENUM][] = {
@@ -205,6 +187,51 @@ new g_szColorName[COLOR_ENUM][] =  {
     "Orange Red"
 };
 
+new const g_SoundKnifeType[][] = {
+    "hit1",
+    "hit2",
+    "hit3",
+    "hit4",
+    "stab",
+    "slash1",
+    "slash2",
+    "deploy",
+    "hitwall"
+};
+
+new const g_KnifeSounds[][] = {
+    "weapons/knife_hit1.wav",
+    "weapons/knife_hit2.wav",
+    "weapons/knife_hit3.wav",
+    "weapons/knife_hit4.wav", 
+    "weapons/knife_stab.wav",
+    "weapons/knife_slash1.wav",
+    "weapons/knife_slash2.wav",
+    "weapons/knife_deploy1.wav",
+    "weapons/knife_hitwall1.wav"
+};
+
+new const g_SoundOtherType[][] = {
+    "build",
+    "prep",
+    "round_start",
+    "infection",
+    "block_grab",
+    "block_drop"
+};
+
+enum (+=1) {
+    SectionNone = -1,
+    BuildersWin,
+    ZombieWin,
+    ZombieDeath,
+    ZombiePain,
+    ZombieKnife,
+    Other
+};
+
+
+
 new g_Pointer[MULTYPLAY_CVARS];
 new g_Forward[FORWARDS_LIST];
 
@@ -219,7 +246,13 @@ new bool: g_bFirstSpawn[MAX_PLAYERS +1], bool: g_bSwapTeams, bool: g_bCanBuild, 
 new bool: g_bZombiesReleased;
 new Float: g_fOffset1[MAX_PLAYERS +1], Float: g_fOffset2[MAX_PLAYERS +1], Float: g_fOffset3[MAX_PLAYERS +1];
 
-new g_szSound[SOUND_ENUM][PLATFORM_MAX_PATH];
+new Array:g_SoundsBuildersWin, Array:g_SoundsZombieWin, Array:g_SoundsZombieDeath, Array:g_SoundsZombiePain;
+new Trie:g_SoundsKeys;
+new Trie:g_SoundsZombieKnife, Trie:g_SoundsOther;
+
+new g_NumSoundsBuildersWin, g_NumSoundsZombieWin, g_NumSoundsZombieDeath, g_NumSoundsZombiePain;
+new g_Section;
+new g_SoundBuffer[64];
 
 new bool:g_bCanRegister;
 new g_FWShowHudMovers;
@@ -251,7 +284,7 @@ new HookChain: g_hPreThink;
 
 #define SetEntMover(%1,%2)          (set_entvar(%1, var_iuser3, %2))
 #define UnsetEntMover(%1)           (set_entvar(%1, var_iuser3, 0))
-#define GetEntMover(%1)           (get_entvar(%1, var_iuser3))
+#define GetEntMover(%1)             (get_entvar(%1, var_iuser3))
 
 #define SetLastMover(%1,%2)         (set_entvar(%1, var_iuser4, %2))
 #define UnsetLastMover(%1)          (set_entvar(%1, var_iuser4, 0))
@@ -283,12 +316,51 @@ public plugin_precache() {
         set_fail_state("Registered zombie classes not found!");
     }
 
-    for(new i; i < SOUND_ENUM; i++){
 
-        formatex(g_szSound[i], charsmax(g_szSound[]), "re_basebuilder/%s.wav", g_szSoundName[i]);
-        precache_sound(g_szSound[i]);
+    g_SoundsBuildersWin = ArrayCreate(PLATFORM_MAX_PATH);
+    g_SoundsZombieWin = ArrayCreate(PLATFORM_MAX_PATH);
+    g_SoundsZombieDeath = ArrayCreate(PLATFORM_MAX_PATH);
+    g_SoundsZombiePain = ArrayCreate(PLATFORM_MAX_PATH);
+
+    g_SoundsZombieKnife = TrieCreate();
+    g_SoundsOther = TrieCreate();
+    g_SoundsKeys = TrieCreate();
+
+    for(new count, size = sizeof(g_SoundKnifeType); count < size; count++) {
+        TrieSetCell(g_SoundsKeys, g_SoundKnifeType[count], count);
     }
+    for(new count, size = sizeof(g_SoundOtherType); count < size; count++) {
+        TrieSetCell(g_SoundsKeys, g_SoundOtherType[count], count);
+    }
+
+    new filedir[PLATFORM_MAX_PATH];
+    get_localinfo("amxx_configsdir", filedir, charsmax(filedir));
+    format(filedir, charsmax(filedir), "%s/plugins/%s/%s", filedir, REBB_MOD_DIR_NAME, CONFIG_NAME);
+
+    if(!parseConfigINI(filedir)) {
+        set_fail_state("Fatal parse error '%s' !", filedir);
+    }
+
+    if(g_SoundsBuildersWin) {
+        g_NumSoundsBuildersWin = ArraySize(g_SoundsBuildersWin);
+    }
+        
+    if(g_SoundsZombieWin) {
+        g_NumSoundsZombieWin = ArraySize(g_SoundsZombieWin);
+    }
+
+    if(g_SoundsZombieDeath) {
+        g_NumSoundsZombieDeath = ArraySize(g_SoundsZombieDeath);
+    }
+
+    if(g_SoundsZombiePain) {
+        g_NumSoundsZombiePain = ArraySize(g_SoundsZombiePain);
+    }
+
+    TrieDestroy(g_SoundsKeys);
 }
+
+
 
 public plugin_init() {
     register_dictionary("re_basebuilder.txt");
@@ -297,7 +369,7 @@ public plugin_init() {
     RegisterCvars();
 
 #if defined AUTO_CFG
-    AutoExecConfig(true, "ReBaseBuilder");
+    AutoExecConfig(true, "ReBaseBuilder", "ReBaseBuilder");
 #endif
 
     for(new i; i < sizeof(MENU_CMDS); i++) {
@@ -399,23 +471,22 @@ public RoundEnd_Post(WinStatus:status, ScenarioEventEndRound:event) {
 
     remove_task(TASK_BUILDTIME);
     remove_task(TASK_PREPTIME);
-
     switch(event) {
         case ROUND_CTS_WIN: {
             g_bSwapTeams = true;
-            client_print(0, print_center, "%L", LANG_PLAYER, "REBB_HUMAN_WIN");
-            rg_send_audio(0, g_szSound[HUMAN_WIN]);
+            client_print(0, print_center, "%L", LANG_PLAYER, "REBB_BUILDERS_WIN");
+            rg_send_audio(0, fmt("%a", ArrayGetStringHandle(g_SoundsBuildersWin, random(g_NumSoundsBuildersWin))));
         }
         case ROUND_TERRORISTS_WIN: {
             g_bSwapTeams = true;
             client_print(0, print_center, "%L", LANG_PLAYER, "REBB_ZOMBIE_WIN");
-            rg_send_audio(0, g_szSound[ZOMBIE_WIN]);
+            rg_send_audio(0, fmt("%a", ArrayGetStringHandle(g_SoundsZombieWin, random(g_NumSoundsZombieWin))));
         }
         case ROUND_GAME_OVER: {
             g_bSwapTeams = true;
             rg_update_teamscores(1, 0, true);
-            client_print(0, print_center, "%L", LANG_PLAYER, "REBB_HUMAN_WIN");
-            rg_send_audio(0, g_szSound[HUMAN_WIN]);
+            client_print(0, print_center, "%L", LANG_PLAYER, "REBB_BUILDERS_WIN");
+            rg_send_audio(0, fmt("%a", ArrayGetStringHandle(g_SoundsBuildersWin, random(g_NumSoundsBuildersWin))));
         }
         default: {
             client_print(0, print_center, ""); // clear print_center as we don't print anything else
@@ -461,6 +532,8 @@ public CSGameRules_RestartRound_Pre() {
             }
         }
     }
+    TrieGetString(g_SoundsOther, "build", g_SoundBuffer, charsmax(g_SoundBuffer));
+    rg_send_audio(0, g_SoundBuffer);
     g_iCountTime = g_Cvar[BUILDING_TIME] + 1;
     set_task_ex(0.1, "BuildTime", TASK_BUILDTIME);
     set_task_ex(1.0, "BuildTime", TASK_BUILDTIME, .flags = SetTask_Repeat);
@@ -580,6 +653,8 @@ public CBasePlayer_Killed_Post(iVictim, iKiller, iGibType) {
     }
     else if(IsPlayer(iKiller) && iVictim != iKiller) {
         client_print(0, print_center, "%L", LANG_PLAYER, "REBB_INFECTION", iVictim);
+        TrieGetString(g_SoundsOther, "infection", g_SoundBuffer, charsmax(g_SoundBuffer));
+        rg_send_audio(0, g_SoundBuffer);
         rg_set_user_team(iVictim, TEAM_TERRORIST);
 
         if(g_Cvar[INFECTION_RESPAWN_DELAY] && !g_bRoundEnded) {
@@ -711,7 +786,8 @@ public CmdGrabMove(id) {
     set_entvar(iEnt, var_rendercolor, g_fBlockColor[g_iPlayerColor[id]]);
     set_entvar(iEnt, var_renderamt, 100.0);
 
-    rg_send_audio(id, g_szSound[BLOCK_GRAB]);
+    TrieGetString(g_SoundsOther, "block_grab", g_SoundBuffer, charsmax(g_SoundBuffer));
+    rg_send_audio(id, g_SoundBuffer);
 
     MovingEnt(iEnt);
     SetEntMover(iEnt, id);
@@ -733,7 +809,8 @@ public CmdGrabStop(id) {
 
     set_entvar(iEnt, var_rendermode, kRenderNormal);
 
-    rg_send_audio(id, g_szSound[BLOCK_DROP]);
+    TrieGetString(g_SoundsOther, "block_drop", g_SoundBuffer, charsmax(g_SoundBuffer));
+    rg_send_audio(id, g_SoundBuffer);
 
     UnsetEntMover(iEnt);
     SetLastMover(iEnt, id);
@@ -793,7 +870,8 @@ public BuildTime() {
             set_task_ex(1.0, "PrepTime", TASK_PREPTIME, .flags = SetTask_Repeat);
 
             client_print_color(0, print_team_default, "%L", LANG_PLAYER, "REBB_PREP_HUMAN_SPAWN");
-
+            TrieGetString(g_SoundsOther, "prep", g_SoundBuffer, charsmax(g_SoundBuffer));
+            rg_send_audio(0, g_SoundBuffer);
             for(new i; i < count; i++) {
                 rg_round_respawn(players[i]);
             }
@@ -1029,6 +1107,47 @@ public Msg_SendAudio() {
     return PLUGIN_CONTINUE;
 }
 
+public SV_StartSound_Pre(const recipients, const entity, const channel, const sample[], const volume, Float:attenuation, const fFlags, const pitch) {
+    if(IsPlayer(entity)) {
+        if(IsZombie(entity)) {
+            new szSound[64];
+            if(sample[0] == 'w' && sample[8] == 'k' && sample[13] == '_') {
+                TrieGetString(g_SoundsZombieKnife, sample, szSound, charsmax(szSound));
+                switch(sample[17]) {
+                    case 'l': {
+                        SetHookChainArg(4, ATYPE_STRING, szSound);
+                    }
+                    case 'w': {
+                        SetHookChainArg(4, ATYPE_STRING, szSound);
+                    }
+                    case 's': {
+                        SetHookChainArg(4, ATYPE_STRING, szSound);
+                    }
+                    case 'b': {
+                        SetHookChainArg(4, ATYPE_STRING, szSound);
+                    }
+                    default: {
+                        SetHookChainArg(4, ATYPE_STRING, szSound);
+                    }
+                }
+            }
+            if(g_NumSoundsZombieDeath){
+                if(sample[7] == 'd' && sample[8] == 'i' && sample[9] == 'e'){
+                    ArrayGetString(g_SoundsZombieDeath, random(g_NumSoundsZombieDeath), szSound, charsmax(szSound));
+                    SetHookChainArg(4, ATYPE_STRING, szSound);
+                }
+            }
+            if(g_NumSoundsZombiePain){
+                if(sample[7] == 'b' && sample[8] == 'h' && sample[9] == 'i' && sample[10] == 't'){
+                    ArrayGetString(g_SoundsZombiePain, random(g_NumSoundsZombiePain), szSound, charsmax(szSound));
+                    SetHookChainArg(4, ATYPE_STRING, szSound);
+                }
+            }
+        }
+    }
+    return HC_CONTINUE;
+}
+
 public Release_Zombies() {
     g_bPrepTime = false;
     g_bZombiesReleased = true;
@@ -1036,7 +1155,8 @@ public Release_Zombies() {
     set_entvar(g_BarrierEnt, var_solid, SOLID_NOT);
     set_entvar(g_BarrierEnt, var_renderamt, 0.0);
 
-    rg_send_audio(0, g_szSound[ZOMBIE_RELEASE]);
+    TrieGetString(g_SoundsOther, "round_start", g_SoundBuffer, charsmax(g_SoundBuffer));
+    rg_send_audio(0, g_SoundBuffer);
     client_print_color(0, print_team_default, "%L", LANG_PLAYER, "REBB_ZOMBIE_RELEASE");
 
     ExecuteForward(g_Forward[FWD_ZOMBIES_RELEASED]);
@@ -1052,6 +1172,7 @@ RegisterHooks() {
     RegisterHookChain(RG_CBasePlayer_Spawn, "CBasePlayer_Spawn_Post", true);
     RegisterHookChain(RG_CBasePlayer_ResetMaxSpeed, "CBasePlayer_ResetMaxSpeed_Post", true);
     RegisterHookChain(RG_CBasePlayer_Killed, "CBasePlayer_Killed_Post", true);
+    RegisterHookChain(RH_SV_StartSound, "SV_StartSound_Pre", false);
     g_hPreThink = RegisterHookChain(RG_CBasePlayer_PreThink, "CBasePlayer_PreThink", false);
 
     RegisterHam(Ham_Item_Deploy, "weapon_knife", "Ham_Item_Deploy_Post", true);
@@ -1171,8 +1292,6 @@ GetCvarsPointers() {
 SetCvarsValues() {
     set_pcvar_num(g_Pointer[MP_BUYTIME], 0);
     set_pcvar_num(g_Pointer[MP_ROUNDOVER], 1);
-    //set_pcvar_num(g_Pointer[MP_BUY_ANYWHERE], 3);
-    //set_pcvar_num(g_Pointer[MP_ITEM_STAYTIME], 0);
 }
 
 public BlockRadioCmd() {
@@ -1258,6 +1377,99 @@ bool:precache_model_ex(Array:arr, const model[], const path[]) {
     }
 
     precache_model(buffer);
+    return true;
+}
+
+bool:parseConfigINI(const configFile[]) {
+    new INIParser:parser = INI_CreateParser();
+
+    if(parser != Invalid_INIParser) {
+        INI_SetReaders(parser, "ReadCFGKeyValue", "ReadCFGNewSection");
+        INI_ParseFile(parser, configFile);
+        INI_DestroyParser(parser);
+        return true;
+    }
+
+    return false;
+}
+
+public bool:ReadCFGNewSection(INIParser:handle, const section[], bool:invalid_tokens, bool:close_bracket) {
+    if(!close_bracket) {
+        log_amx("Closing bracket was not detected! Current section name is '%s'.", section);
+        return false;
+    }
+
+    if(equal(section, "builders_win")) {
+        g_Section = BuildersWin;
+        return true;
+    }
+
+    if(equal(section, "zombie_win")) {
+        g_Section = ZombieWin;
+        return true;
+    }
+
+    if(equal(section, "zombie_death")) {
+        g_Section = ZombieDeath;
+        return true;
+    }
+
+    if(equal(section, "zombie_pain")) {
+        g_Section = ZombiePain;
+        return true;
+    }
+
+    if(equal(section, "zombie_knife")) {
+        g_Section = ZombieKnife;
+        return true;
+    }
+
+    if(equal(section, "other")) {
+        g_Section = Other;
+        return true;
+    }
+
+    return false;
+}
+
+public bool:ReadCFGKeyValue(INIParser:handle, const key[], const value[]) {
+    if(g_Section == SectionNone || key[0] == EOS) {
+        return false;
+    }
+
+    static buffer[MAX_BUFFER_LENGTH], keyid;
+    formatex(buffer, charsmax(buffer), "%s", key);
+    switch(g_Section) {
+        case BuildersWin: {
+                ArrayPushString(g_SoundsBuildersWin, buffer);
+                engfunc(EngFunc_PrecacheSound, buffer);
+        }
+        case ZombieWin: {
+                ArrayPushString(g_SoundsZombieWin, buffer);
+                engfunc(EngFunc_PrecacheSound, buffer);
+        }
+        case ZombieDeath: {
+                ArrayPushString(g_SoundsZombieDeath, buffer);
+                engfunc(EngFunc_PrecacheSound, buffer);
+        }
+        case ZombiePain: {
+                ArrayPushString(g_SoundsZombiePain, buffer);
+                engfunc(EngFunc_PrecacheSound, buffer);
+        }
+        case ZombieKnife: {
+            if(TrieGetCell(g_SoundsKeys, key, keyid)) {
+                formatex(buffer, charsmax(buffer), "%s", value);
+                TrieSetString(g_SoundsZombieKnife, g_KnifeSounds[keyid], buffer);
+                engfunc(EngFunc_PrecacheSound, buffer);
+            }
+        }
+        case Other: {
+             formatex(buffer, charsmax(buffer), "%s", value);
+             TrieSetString(g_SoundsOther, key, buffer);
+             engfunc(EngFunc_PrecacheSound, buffer);
+        }
+    }
+
     return true;
 }
 

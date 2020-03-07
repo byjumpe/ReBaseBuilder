@@ -103,3 +103,10 @@ native rebb_is_preparation_phase();
  * @return				1 if zombies are released, false otherwise.
  */
 native rebb_is_zombies_released();
+
+/**
+ * Open guns menu.
+ *
+ * @return				-1 if I can't be opened.
+ */
+native rebb_open_guns_menu(id);
