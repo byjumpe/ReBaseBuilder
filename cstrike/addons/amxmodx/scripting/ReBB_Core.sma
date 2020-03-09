@@ -35,7 +35,7 @@ Thx for the mod idea and original code
 // Автосоздание конфига
 #define AUTO_CFG
 
-new const VERSION[] = "0.3.10 Alpha";
+new const VERSION[] = "0.3.11 Alpha";
 
 // List of client commands that open zombie class menu
 new const MENU_CMDS[][] = {
