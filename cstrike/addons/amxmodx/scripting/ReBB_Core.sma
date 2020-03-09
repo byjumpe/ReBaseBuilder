@@ -35,7 +35,7 @@ Thx for the mod idea and original code
 // Автосоздание конфига
 #define AUTO_CFG
 
-new const VERSION[] = "0.3.10 Alpha";
+new const VERSION[] = "0.3.11 Alpha";
 
 // List of client commands that open zombie class menu
 new const MENU_CMDS[][] = {
@@ -64,10 +64,10 @@ new const RADIO_CMDS[][] = {
 new const REBB_MOD_DIR_NAME[] = "ReBaseBuilder";
 new const CONFIG_NAME[] = "rebb_sounds.ini";
 
-const MAX_SOUNDS = 15;
+//const MAX_SOUNDS = 15;
 
-#define MAX_BUFFER_INFO 128
-const MAX_BUFFER_LENGTH = 128;
+#define MAX_CLASS_INFO_LENGTH   32
+#define MAX_BUFFER_LENGTH       128
 
 const Float:MAX_MOVE_DISTANCE = 768.0;
 const Float:MIN_MOVE_DISTANCE = 32.0;
@@ -230,8 +230,6 @@ enum (+=1) {
     Other
 };
 
-
-
 new g_Pointer[MULTYPLAY_CVARS];
 new g_Forward[FORWARDS_LIST];
 
@@ -299,10 +297,10 @@ public plugin_precache() {
     RegisterCoreForwards();
 
     // TODO: перевести магические цифры в константы
-    g_ZombieName = ArrayCreate(32, 1);
-    g_ZombieInfo = ArrayCreate(32, 1);
-    g_ZombieModel = ArrayCreate(64, 1);
-    g_ZombieHandModel = ArrayCreate(64, 1);
+    g_ZombieName = ArrayCreate(MAX_NAME_LENGTH, 1);
+    g_ZombieInfo = ArrayCreate(MAX_CLASS_INFO_LENGTH, 1);
+    g_ZombieModel = ArrayCreate(MAX_RESOURCE_PATH_LENGTH, 1);
+    g_ZombieHandModel = ArrayCreate(MAX_RESOURCE_PATH_LENGTH, 1);
     g_ZombieHP = ArrayCreate(1, 1);
     g_ZombieSpeed = ArrayCreate(1, 1);
     g_ZombieGravity = ArrayCreate(1, 1);
@@ -317,10 +315,10 @@ public plugin_precache() {
     }
 
 
-    g_SoundsBuildersWin = ArrayCreate(PLATFORM_MAX_PATH);
-    g_SoundsZombieWin = ArrayCreate(PLATFORM_MAX_PATH);
-    g_SoundsZombieDeath = ArrayCreate(PLATFORM_MAX_PATH);
-    g_SoundsZombiePain = ArrayCreate(PLATFORM_MAX_PATH);
+    g_SoundsBuildersWin = ArrayCreate(MAX_RESOURCE_PATH_LENGTH);
+    g_SoundsZombieWin = ArrayCreate(MAX_RESOURCE_PATH_LENGTH);
+    g_SoundsZombieDeath = ArrayCreate(MAX_RESOURCE_PATH_LENGTH);
+    g_SoundsZombiePain = ArrayCreate(MAX_RESOURCE_PATH_LENGTH);
 
     g_SoundsZombieKnife = TrieCreate();
     g_SoundsOther = TrieCreate();
@@ -333,7 +331,7 @@ public plugin_precache() {
         TrieSetCell(g_SoundsKeys, g_SoundOtherType[count], count);
     }
 
-    new filedir[PLATFORM_MAX_PATH];
+    new filedir[MAX_RESOURCE_PATH_LENGTH];
     get_localinfo("amxx_configsdir", filedir, charsmax(filedir));
     format(filedir, charsmax(filedir), "%s/plugins/%s/%s", filedir, REBB_MOD_DIR_NAME, CONFIG_NAME);
 
@@ -359,8 +357,6 @@ public plugin_precache() {
 
     TrieDestroy(g_SoundsKeys);
 }
-
-
 
 public plugin_init() {
     register_dictionary("re_basebuilder.txt");
@@ -905,7 +901,7 @@ public Zombie_Menu(id){
 
     new menu = menu_create(fmt("%L", LANG_PLAYER, "REBB_ZOMBIE_MENU"), "Zombie_Menu_Handler");
 
-    for(new i, name[MAX_NAME_LENGTH], info[32], flag; i < g_ClassesCount; i++) {
+    for(new i, name[MAX_NAME_LENGTH], info[MAX_CLASS_INFO_LENGTH], flag; i < g_ClassesCount; i++) {
         ArrayGetString(g_ZombieName, i, name, sizeof(name));
         ArrayGetString(g_ZombieInfo, i, info, sizeof(info));
         flag = ArrayGetCell(g_ZombieFlags, i);
@@ -1325,7 +1321,8 @@ public native_register_zombie_class(iPlugin, iParams) {
         return ERR_REG_CLASS__WRONG_PLACE;
     }
 
-    new szName[32], szInfo[32], szModel[128], szHandmodel[64], Float:fHealth, Float:fSpeed, Float:fGravity, iFlags;
+    new szName[MAX_NAME_LENGTH], szInfo[MAX_CLASS_INFO_LENGTH], szModel[MAX_RESOURCE_PATH_LENGTH], szHandmodel[MAX_RESOURCE_PATH_LENGTH];
+    new Float:fHealth, Float:fSpeed, Float:fGravity, iFlags;
 
     get_string(arg_name, szName, sizeof(szName));
     ArrayPushString(g_ZombieName, szName);
@@ -1361,7 +1358,7 @@ public native_register_zombie_class(iPlugin, iParams) {
 }
 
 bool:precache_model_ex(Array:arr, const model[], const path[]) {
-    static buffer[MAX_BUFFER_INFO];
+    static buffer[MAX_BUFFER_LENGTH];
     ArrayPushString(arr, model);
 
     if(equal(path, "player")) {
