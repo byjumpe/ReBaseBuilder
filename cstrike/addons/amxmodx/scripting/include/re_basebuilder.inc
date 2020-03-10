@@ -10,6 +10,26 @@
 #define IsAlive(%0) is_user_alive(%0)
 #define IsZombie(%0) (get_member(%0, m_iTeam) == TEAM_TERRORIST)
 #define IsHuman(%0) (get_member(%0, m_iTeam) == TEAM_CT)
+#define IsPlayer(%0) (1 <= %0 <= MaxClients)
+#define GetCvarDesc(%0)             fmt("%L", LANG_SERVER, %0)
+
+#define LockBlock(%1,%2)            (set_entvar(%1, var_iuser1, %2))
+#define UnlockBlock(%1)             (set_entvar(%1, var_iuser1, 0))
+#define BlockLocker(%1)             (get_entvar(%1, var_iuser1))
+
+#define MovingEnt(%1)               (set_entvar(%1, var_iuser2, 1))
+#define UnmovingEnt(%1)             (set_entvar(%1, var_iuser2, 0))
+#define IsMovingEnt(%1)             (get_entvar(%1, var_iuser2) == 1)
+
+#define SetEntMover(%1,%2)          (set_entvar(%1, var_iuser3, %2))
+#define UnsetEntMover(%1)           (set_entvar(%1, var_iuser3, 0))
+#define GetEntMover(%1)             (get_entvar(%1, var_iuser3))
+
+#define SetLastMover(%1,%2)         (set_entvar(%1, var_iuser4, %2))
+#define UnsetLastMover(%1)          (set_entvar(%1, var_iuser4, 0))
+#define GetLastMover(%1)            (get_entvar(%1, var_iuser4))
+
+stock const REBB_MOD_DIR_NAME[MAX_NAME_LENGTH] = "ReBaseBuilder";
 
 /**
  * Called in plugin_precache() to request zombie classes registration.
@@ -56,6 +76,53 @@ forward rebb_preparation_start(iPrepTime);
 forward rebb_zombies_released();
 
 /**
+ * Called before properties have been set for the selected block.
+ *
+ * @param id			ID of the mover.
+ * @param iEnt			ID of the entity being moved.
+ *
+ * @noreturn
+ */
+forward rebb_grab_pre(id, iEnt);
+
+/**
+ * Called after properties have been set for the selected block.
+ *
+ * @param id			ID of the mover.
+ * @param iEnt			ID of the entity being moved.
+ *
+ * @noreturn
+ */
+forward rebb_grab_post(id, iEnt);
+
+/**
+ * Called before properties have been set for the released block.
+ *
+ * @param id			ID of the mover.
+ * @param iEnt			ID of the entity being moved.
+ *
+ * @noreturn
+ */
+forward rebb_drop_pre(id, iEnt);
+
+/**
+ * Called after properties have been set for the released block.
+ *
+ * @param id			ID of the mover.
+ * @param iEnt			ID of the entity being moved.
+ *
+ * @noreturn
+ */
+forward rebb_drop_post(id, iEnt);
+
+/**
+ * Сalled when the Builder has been infected.
+ *
+ * @noreturn
+ */
+forward rebb_infected();
+
+/**
  * Registers a custom class which will be added to the zombie classes menu of ReBB.
  *
  * @note	The returned zombie class ID can be later used to identify
@@ -70,7 +137,6 @@ forward rebb_zombies_released();
  * @param fGravity		Gravity multiplier.
  * @param fKnockback	Empty value.
  * @param flags			Set flag of admin only class, ADMIN_USER is normal players.
- * @param price			Cost of unlocking this class (if credits is enabled).
  * @return				An internal zombie class ID, or ERR_REG_CLASS__* on failure.
  */
 native rebb_register_zombie_class(const szName[], const szInfo[], const szModel[], const szHandmodel[], Float:fHealth, Float:fSpeed, Float:fGravity, flags = ADMIN_ALL);
@@ -110,3 +176,17 @@ native rebb_is_zombies_released();
  * @return				-1 if I can't be opened.
  */
 native rebb_open_guns_menu(id);
+
+/**
+ * Grab stop.
+ *
+ * @return				-1 if User is not connected.
+ */
+native rebb_grab_stop(id);
+
+/**
+ * Barrier.
+ *
+ * @return				Id barrier ent (g_BarrierEnt).
+ */
+native rebb_barrier_ent();

@@ -4,6 +4,10 @@
 #include <reapi>
 #include <re_basebuilder>
 
+new const VERSION[] = "0.0.1 Alpha";
+
+new const CONFIG_NAME[] = "rebb_guns_menu.ini";
+
 #define MAX_PRIMARY_WEAPONS           5
 #define MAX_SECONDARY_WEAPONS         3
 
@@ -41,12 +45,9 @@ new g_szSecondaryWeapons[MAX_SECONDARY_WEAPONS +1][WeaponInfo];
 new g_iPrimaryWeapons,
     g_iSecondaryWeapons;
 
-new const REBB_MOD_DIR_NAME[] = "ReBaseBuilder";
-new const g_szFileName[] = "rebb_guns_menu.ini";
-
 public plugin_init(){
 
-    register_plugin("[ReBB] Guns Menu", "0.5.1", "ReBB");
+    register_plugin("[ReBB] Guns Menu", VERSION, "ReBB");
     
     for(new i; i < sizeof(GUNS_CMDS); i++) {
         register_clcmd(GUNS_CMDS[i], "Guns_Menu");
@@ -56,14 +57,14 @@ public plugin_init(){
 }
 
 ReadGunsFile() {
-    new szPath[PLATFORM_MAX_PATH];
-    get_localinfo("amxx_configsdir", szPath, charsmax(szPath));
-    format(szPath, charsmax(szPath), "%s/plugins/%s/%s", szPath, REBB_MOD_DIR_NAME, g_szFileName);
+    new sConfigsDir[PLATFORM_MAX_PATH];
+    get_localinfo("amxx_configsdir", sConfigsDir, charsmax(sConfigsDir));
+    format(sConfigsDir, charsmax(sConfigsDir), "%s/%s/%s", sConfigsDir, REBB_MOD_DIR_NAME, CONFIG_NAME);
 
-    new iFile = fopen(szPath, "rt");
+    new iFile = fopen(sConfigsDir, "rt");
 
     if(!iFile) {
-        set_fail_state("File ^"%s^" is not found", szPath);
+        set_fail_state("File ^"%s^" is not found", sConfigsDir);
     }
     
     new iStrLen, iBlock, iSize, iCount;
