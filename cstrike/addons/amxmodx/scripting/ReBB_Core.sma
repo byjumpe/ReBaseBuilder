@@ -28,11 +28,10 @@ Thx for the mod idea and original code
 #include <fakemeta>
 #include <fakemeta_util>
 #include <hamsandwich>
-#include <reapi>
 #include <time>
 #include <re_basebuilder>
 
-new const VERSION[] = "0.4.14 Alpha";
+new const VERSION[] = "0.4.16 Alpha";
 
 new const CONFIG_NAME[] = "ReBaseBuilder.cfg";
 // List of client commands that open zombie class menu
@@ -113,9 +112,6 @@ new g_ClassesCount;
 new g_SyncHud;
 new g_PluginId;
 
-//new g_msgSendAudio;
-//new g_hMsgSendAudio;
-
 public plugin_precache() {
     RegisterCoreForwards();
 
@@ -158,8 +154,6 @@ public plugin_init() {
             register_clcmd(RADIO_CMDS[i], szBlockCallBack);
     }
 
-    //g_msgSendAudio = get_user_msgid("SendAudio");
-
     register_event("Health", "Event_Health", "be", "1>0");
     set_msg_block(get_user_msgid("ClCorpse"), BLOCK_SET);
 
@@ -197,13 +191,7 @@ public client_disconnected(id) {
     remove_task(id+TASK_HEALTH);
 }
 
-/*public RoundEnd_Pre(WinStatus:status, ScenarioEventEndRound:event) {
-    //g_hMsgSendAudio = register_message(g_msgSendAudio, "Msg_SendAudio");
-}*/
-
 public RoundEnd_Post(WinStatus:status, ScenarioEventEndRound:event) {
-    //unregister_message(g_msgSendAudio, g_hMsgSendAudio);
-
     g_bRoundEnded = true;
     g_bCanBuild = false;
     g_bPrepTime = false;
@@ -287,7 +275,7 @@ public CBasePlayer_Spawn_Post(id) {
         g_iTeam[id] = get_member(id, m_iTeam);
     }
 
-    if(!g_iTeam[id] != TEAM_ZOMBIE) {
+    if(g_iTeam[id] != TEAM_ZOMBIE) {
         if(g_bPrepTime) {
             rebb_open_guns_menu(id);
         }
@@ -539,19 +527,7 @@ public Respawn(id) {
     }
 }
 
-/*public Msg_SendAudio() {
-    new szSound[17];
-    get_msg_arg_string(2, szSound, charsmax(szSound));
-
-    if(contain(szSound[7], "terwin") != -1 || contain(szSound[7], "ctwin") != -1 || contain(szSound[7], "rounddraw") != -1) {
-        return PLUGIN_HANDLED;
-    }
-
-    return PLUGIN_CONTINUE;
-}*/
-
 RegisterHooks() {
-    //RegisterHookChain(RG_RoundEnd, "RoundEnd_Pre", false);
     RegisterHookChain(RG_RoundEnd, "RoundEnd_Post", true);
     RegisterHookChain(RG_CSGameRules_RestartRound, "CSGameRules_RestartRound_Pre", false);
     RegisterHookChain(RG_CBasePlayer_DropPlayerItem, "CBasePlayer_DropPlayerItem_Pre", false);
@@ -748,7 +724,9 @@ public native_register_zombie_class(iPlugin, iParams) {
 
 public native_zombie_get_class_id(iPlugin, iParams) {
     enum { player = 1 };
-    //TODO: добавить проверку валидности индекса игрока и проверку валидности индекса класса зомби
+    if(!is_user_connected(player)){
+        return -1;
+    }
     return g_iZombieClass[ get_param(player) ];
 }
 

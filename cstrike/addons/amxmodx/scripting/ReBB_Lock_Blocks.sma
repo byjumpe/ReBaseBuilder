@@ -15,11 +15,11 @@ new const LOCK_BLOCK_CMDS[][] = {
 
 public plugin_init() {
     register_plugin("[ReBB] Lock Blocks", VERSION, "ReBB");
-
+/*
     if(!rebb_core_is_running()) {
         set_fail_state("Core of mod is not running! No further work with plugin possible!");
     } 
-
+*/
     RegisterHookChain(RG_CSGameRules_RestartRound, "CSGameRules_RestartRound_Pre", false);
 
     bind_pcvar_num(

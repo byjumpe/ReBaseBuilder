@@ -20,11 +20,11 @@ new g_Class_Tank;
 
 public plugin_init() {
     register_plugin("[ReBB] Zombie Tank", "0.1.2", "ReBB");
-
+/*
     if(!rebb_core_is_running()) {
         set_fail_state("Core of mod is not running! No further work with plugin possible!");
     }
-
+*/
     RegisterHookChain(RG_CBasePlayer_Spawn, "CBasePlayer_Spawn", true);    
 }
 

@@ -18,6 +18,7 @@ enum any:POS { Float:X, Float:Y, Float:Z };
 
 enum FORWARDS_LIST {
     FWD_PUSH_PULL,
+    FWD_GRAB_ENTITY,
     FWD_GRAB_ENTITY_PRE,
     FWD_GRAB_ENTITY_POST,
     FWD_DROP_ENTITY_PRE,
@@ -37,11 +38,11 @@ public plugin_precache() {
 
 public plugin_init() {
     register_plugin("[ReBB] Grab Blocks", VERSION, "ReBB");
-
+/*
     if(!rebb_core_is_running()) {
         set_fail_state("Core of mod is not running! No further work with plugin possible!");
     }
-
+*/
     RegisterHooks();
 
     bind_pcvar_num(
@@ -126,7 +127,7 @@ public CBasePlayer_PreThink(id) {
         CmdGrabStop(id);
     }
 
-    if(/*!IsAlive(id) || */is_user_zombie(id)) {
+    if(is_user_zombie(id)) {
         CmdGrabStop(id);
         return;
     }
@@ -181,8 +182,13 @@ public CBasePlayer_PreThink(id) {
 }
 
 public CmdGrabMove(id) {
-    //new CanBuild = rebb_is_building_phase();
-    if(/*!CanBuild*/ !rebb_is_building_phase() || is_user_zombie(id)) {
+    if(!rebb_is_building_phase() || is_user_zombie(id)) {
+        return PLUGIN_HANDLED;
+    }
+
+    new iReturn;
+    ExecuteForward(g_Forward[FWD_GRAB_ENTITY], iReturn, id);
+    if(iReturn == PLUGIN_HANDLED) {
         return PLUGIN_HANDLED;
     }
 
@@ -273,6 +279,7 @@ RegisterHooks() {
 
 RegisterGrabForwards() {
     g_Forward[FWD_PUSH_PULL] = CreateMultiForward("rebb_block_pushpull", ET_IGNORE, FP_CELL, FP_CELL, FP_CELL);
+    g_Forward[FWD_GRAB_ENTITY] = CreateMultiForward("rebb_grab_block", ET_STOP, FP_CELL);
     g_Forward[FWD_GRAB_ENTITY_PRE] = CreateMultiForward("rebb_grab_pre", ET_IGNORE, FP_CELL, FP_CELL);
     g_Forward[FWD_GRAB_ENTITY_POST] = CreateMultiForward("rebb_grab_post", ET_IGNORE, FP_CELL, FP_CELL);
     g_Forward[FWD_DROP_ENTITY_PRE] = CreateMultiForward("rebb_drop_pre", ET_IGNORE, FP_CELL, FP_CELL);
@@ -281,7 +288,9 @@ RegisterGrabForwards() {
 
 public plugin_natives() {
     register_native("rebb_grab_stop", "native_grab_stop");
+    register_native("rebb_get_owned_ent", "native_get_owned_ent");
 }
+
 public native_grab_stop(iPlugin, iParams) {
     new id = get_param(1);
     if(!is_user_connected(id)) {
@@ -289,4 +298,13 @@ public native_grab_stop(iPlugin, iParams) {
     }
 
     return CmdGrabStop(id);
+}
+
+public native_get_owned_ent(iPlugin, iParams) {
+    new id = get_param(1);
+
+    if(!is_user_connected(id)){
+        return -1;
+    }
+    return g_iOwnedEnt[id];
 }

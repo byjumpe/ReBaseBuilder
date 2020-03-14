@@ -16,10 +16,10 @@ new g_Class_Default;
 
 public plugin_init() {
     register_plugin("[ReBB] Zombie Default", "0.1.2", "ReBB");
-
+/*
     if(!rebb_core_is_running()) {
         set_fail_state("Core of mod is not running! No further work with plugin possible!");
-    }
+    }*/
 }
 
 public rebb_class_reg_request() {

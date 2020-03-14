@@ -10,11 +10,11 @@ new g_iShowHudMovers, g_FWShowHudMovers, g_HudShowMovers, g_BarrierEnt;
 
 public plugin_init() {
     register_plugin("[ReBB] Hud Movers", VERSION, "ReBB");
-
+/*
     if(!rebb_core_is_running()) {
         set_fail_state("Core of mod is not running! No further work with plugin possible!");
     }
-
+*/
     bind_pcvar_num(
             create_cvar(
             .name = "rebb_show_hud_movers",
