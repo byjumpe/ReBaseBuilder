@@ -1,12 +1,11 @@
 #pragma semicolon 1
 
 #include <amxmodx>
-#include <reapi>
 #include <re_basebuilder>
 
 new g_iLockBlocks, g_iMaxLockBlocks, g_iOwnedEntities[MAX_PLAYERS +1], g_BarrierEnt;
 
-new const VERSION[] = "0.0.1 Alpha";
+new const VERSION[] = "0.0.2 Alpha";
 
 // List of client commands that locked block
 new const LOCK_BLOCK_CMDS[][] = {
@@ -14,11 +13,13 @@ new const LOCK_BLOCK_CMDS[][] = {
     "say_team /lock"
 };
 
-public plugin_precache() {
-    register_plugin("[ReBB] Lock Blocks", VERSION, "ReBB");
-}
-
 public plugin_init() {
+    register_plugin("[ReBB] Lock Blocks", VERSION, "ReBB");
+
+    if(!rebb_core_is_running()) {
+        set_fail_state("Core of mod is not running! No further work with plugin possible!");
+    } 
+
     RegisterHookChain(RG_CSGameRules_RestartRound, "CSGameRules_RestartRound_Pre", false);
 
     bind_pcvar_num(
@@ -41,6 +42,7 @@ public plugin_init() {
     for(new i; i < sizeof(LOCK_BLOCK_CMDS); i++) {
         register_clcmd(LOCK_BLOCK_CMDS[i], "LockBlockCmd");
     }
+
     g_BarrierEnt = rebb_barrier_ent();
 }
 
@@ -53,13 +55,14 @@ public CSGameRules_RestartRound_Pre() {
 }
 
 public LockBlockCmd(id){
-    new CanBuild = rebb_is_building_phase();
+    //new CanBuild = rebb_is_building_phase();
 
-    if(!CanBuild || IsZombie(id) || !g_iLockBlocks) {
+    if(!rebb_is_building_phase()/*CanBuild*/ || is_user_zombie(id) || !g_iLockBlocks) {
         return PLUGIN_HANDLED;
     }
 
     new iEnt, iBody, szTarget[7];
+    // WTF???
     get_user_aiming(id, iEnt, iBody);
 
     get_entvar(iEnt, var_targetname, szTarget, charsmax(szTarget));
