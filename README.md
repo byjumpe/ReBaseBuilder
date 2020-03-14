@@ -9,7 +9,7 @@ The game takes place on special maps (bb_ prefix), consisting of two parts: a co
 ## Authors
 
 - Jumper ([@byjumpe](https://github.com/byjumpe)) - [Profile on Dev-Cs.Ru](https://dev-cs.ru/members/299/)
-- BlackSignature ([@Giferns](https://github.com/Giferns))) - [Profile on Dev-Cs.Ru](https://dev-cs.ru/members/1111/)
+- BlackSignature ([@Giferns](https://github.com/Giferns)) - [Profile on Dev-Cs.Ru](https://dev-cs.ru/members/1111/)
 - d3m37r4 ([@d3m37r4](https://github.com/d3m37r4)) - [Profile on Dev-Cs.Ru](https://dev-cs.ru/members/64/)
 
 
