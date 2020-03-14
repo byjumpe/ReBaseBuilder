@@ -3,14 +3,24 @@
 #endif
 #define _re_basebuilder_included
 
-#define ERR_REG_CLASS__WRONG_PLACE -1
-#define ERR_REG_CLASS__LACK_OF_RES -2
+#include <reapi>
 
-#define IsConnected(%0) is_user_connected(%0)
-#define IsAlive(%0) is_user_alive(%0)
-#define IsZombie(%0) (get_member(%0, m_iTeam) == TEAM_TERRORIST)
-#define IsHuman(%0) (get_member(%0, m_iTeam) == TEAM_CT)
-#define IsPlayer(%0) (1 <= %0 <= MaxClients)
+#define ERR_REG_CLASS__WRONG_PLACE 	-1
+#define ERR_REG_CLASS__LACK_OF_RES 	-2
+
+#define MAX_BUFFER_LENGTH       	128
+#define MAX_CLASS_INFO_LENGTH   	32
+
+#define ROUND_ZOMBIES_WIN           ROUND_TERRORISTS_WIN
+#define ROUND_HUMANS_WIN            ROUND_CTS_WIN
+
+#define TEAM_ZOMBIE             	(any:TEAM_TERRORIST)
+#define TEAM_HUMANS             	(any:TEAM_CT)
+
+#define is_user_zombie(%0)      	get_member(%0, m_iTeam) == TEAM_ZOMBIE
+#define is_user_human(%0)       	get_member(%0, m_iTeam) == TEAM_HUMANS
+#define is_valid_team(%1)			TEAM_ZOMBIE <= get_member(%1, m_iTeam) <= TEAM_HUMANS
+
 #define GetCvarDesc(%0)             fmt("%L", LANG_SERVER, %0)
 
 #define LockBlock(%1,%2)            (set_entvar(%1, var_iuser1, %2))
@@ -121,6 +131,13 @@ forward rebb_drop_post(id, iEnt);
  * @noreturn
  */
 forward rebb_infected();
+
+/**
+ * Checks to is running a Core of Base Builder.
+ *
+ * @return				Returns true if plugin is running or has a debug status, otherwise will return false.
+ */
+native rebb_core_is_running();
 
 /**
  * Registers a custom class which will be added to the zombie classes menu of ReBB.

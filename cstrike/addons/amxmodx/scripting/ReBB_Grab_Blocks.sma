@@ -4,10 +4,9 @@
 #include <amxmisc>
 #include <fakemeta>
 #include <fakemeta_util>
-#include <reapi>
 #include <re_basebuilder>
 
-new const VERSION[] = "0.0.1 Alpha";
+new const VERSION[] = "0.0.2 Alpha";
 
 const Float:MAX_MOVE_DISTANCE = 768.0;
 const Float:MIN_MOVE_DISTANCE = 32.0;
@@ -33,13 +32,18 @@ new Float: g_fOffset1[MAX_PLAYERS +1], Float: g_fOffset2[MAX_PLAYERS +1], Float:
 new HookChain: g_hPreThink;
 
 public plugin_precache() {
-    register_plugin("[ReBB] Grab Blocks", VERSION, "ReBB");
-
     RegisterGrabForwards();
 }
 
 public plugin_init() {
+    register_plugin("[ReBB] Grab Blocks", VERSION, "ReBB");
+
+    if(!rebb_core_is_running()) {
+        set_fail_state("Core of mod is not running! No further work with plugin possible!");
+    }
+
     RegisterHooks();
+
     bind_pcvar_num(
             create_cvar(
             .name = "rebb_reset_ent",
@@ -48,6 +52,7 @@ public plugin_init() {
             .description = GetCvarDesc("REBB_RESET_ENT")
         ), g_iResetEnt
     );
+
     g_iLockBlocks = get_cvar_num("rebb_lock_blocks");
     g_BarrierEnt = rebb_barrier_ent();
 }
@@ -71,13 +76,11 @@ public RoundEnd_Post(WinStatus:status, ScenarioEventEndRound:event) {
 
     DisableHookChain(g_hPreThink);
 
-    new players[MAX_PLAYERS], count, player;
+    new players[MAX_PLAYERS], count;
     get_players(players, count);
 
     for(new i; i < count; i++) {
-        player = players[i];
-
-        CmdGrabStop(player);
+        CmdGrabStop(players[i]);
     }
 }
 
@@ -85,31 +88,32 @@ public CSGameRules_RestartRound_Pre() {
     if(g_iResetEnt) {
         new szTarget[7];
         for(new iEnt = MaxClients; iEnt < 1024; iEnt++) {
-            if(is_entity(iEnt)) {
-                get_entvar(iEnt, var_targetname, szTarget, charsmax(szTarget));
+            if(!is_entity(iEnt)) {
+                continue;
+            }
+            
+            get_entvar(iEnt, var_targetname, szTarget, charsmax(szTarget));
 
-                if(g_iLockBlocks && BlockLocker(iEnt) && iEnt != g_BarrierEnt && FClassnameIs(iEnt, "func_wall") && !equal(szTarget, "ignore")) {
-                    UnlockBlock(iEnt);
-                    set_entvar(iEnt, var_rendermode, kRenderNormal);
-                    engfunc(EngFunc_SetOrigin, iEnt, Float:{ 0.0, 0.0, 0.0 });
+            if(g_iLockBlocks && BlockLocker(iEnt) && iEnt != g_BarrierEnt && FClassnameIs(iEnt, "func_wall") && !equal(szTarget, "ignore")) {
+                UnlockBlock(iEnt);
+                set_entvar(iEnt, var_rendermode, kRenderNormal);
+                engfunc(EngFunc_SetOrigin, iEnt, Float:{ 0.0, 0.0, 0.0 });
                     
-                    UnsetLastMover(iEnt);
-                    UnsetEntMover(iEnt);
-                }
-                else if(!BlockLocker(iEnt) && iEnt != g_BarrierEnt && FClassnameIs(iEnt, "func_wall") && !equal(szTarget, "ignore")) {
-                    set_entvar(iEnt, var_rendermode, kRenderNormal);
-                    engfunc(EngFunc_SetOrigin, iEnt, Float:{ 0.0, 0.0, 0.0 });
+                UnsetLastMover(iEnt);
+                UnsetEntMover(iEnt);
+            } else if(!BlockLocker(iEnt) && iEnt != g_BarrierEnt && FClassnameIs(iEnt, "func_wall") && !equal(szTarget, "ignore")) {
+                set_entvar(iEnt, var_rendermode, kRenderNormal);
+                engfunc(EngFunc_SetOrigin, iEnt, Float:{ 0.0, 0.0, 0.0 });
                     
-                    UnsetLastMover(iEnt);
-                    UnsetEntMover(iEnt);
-                }
+                UnsetLastMover(iEnt);
+                UnsetEntMover(iEnt);
             }
         }
     }
 }
 
 public CBasePlayer_PreThink(id) {
-    if(!IsAlive(id)) {
+    if(!is_user_alive(id)) {
         return;
     }
 
@@ -122,12 +126,12 @@ public CBasePlayer_PreThink(id) {
         CmdGrabStop(id);
     }
 
-    if(!IsAlive(id) || IsZombie(id)) {
+    if(/*!IsAlive(id) || */is_user_zombie(id)) {
         CmdGrabStop(id);
         return;
     }
 
-    if(!g_iOwnedEnt[id] || !is_entity(g_iOwnedEnt[id])) {
+    if(/*!g_iOwnedEnt[id] || !is_entity(g_iOwnedEnt[id])*/is_nullent(g_iOwnedEnt[id])) {
         return;
     }
 
@@ -177,13 +181,12 @@ public CBasePlayer_PreThink(id) {
 }
 
 public CmdGrabMove(id) {
-    new CanBuild = rebb_is_building_phase();
-
-    if(!CanBuild || IsZombie(id)) {
+    //new CanBuild = rebb_is_building_phase();
+    if(/*!CanBuild*/ !rebb_is_building_phase() || is_user_zombie(id)) {
         return PLUGIN_HANDLED;
     }
 
-    if(g_iOwnedEnt[id] && is_entity(g_iOwnedEnt[id])) {
+    if(/*g_iOwnedEnt[id] && is_entity(g_iOwnedEnt[id])*/!is_nullent(g_iOwnedEnt[id])) {
         CmdGrabStop(id);
     }
 
@@ -245,6 +248,7 @@ public CmdGrabStop(id) {
         return PLUGIN_HANDLED;
     }
 
+    // TODO: Добавить проверку на валидность энтити?
     new iEnt = g_iOwnedEnt[id];
 
     ExecuteForward(g_Forward[FWD_DROP_ENTITY_PRE], _, id, iEnt);
@@ -280,9 +284,9 @@ public plugin_natives() {
 }
 public native_grab_stop(iPlugin, iParams) {
     new id = get_param(1);
-
-    if(!IsConnected(id)){
+    if(!is_user_connected(id)) {
         return -1;
     }
+
     return CmdGrabStop(id);
 }
