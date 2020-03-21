@@ -1,72 +1,68 @@
 #pragma semicolon 1
 
 #include <amxmodx>
-#include <amxmisc>
 #include <re_basebuilder>
 
-// Флаг для бана строительства
-#define BAN_BUILD             ADMIN_BAN
+#define ACCESS_FLAG     ADMIN_BAN   // Флаг для бана строительства
 
-new Trie:g_tSaveBanBuild;
+new Trie:g_BuildBans;
 
-new const PLUGIN[] = "[ReBB] Lock Blocks";
-new const VERSION[] = "0.0.1 Alpha";
+public plugin_precache() {
+    register_plugin("[ReBB] Lock Blocks", "0.0.3 Alpha", "ReBB");
 
-public plugin_init() {
-    register_plugin(PLUGIN, VERSION, "ReBB");
-/*
     if(!rebb_core_is_running()) {
-        set_fail_state("Core of mod is not running! No further work with plugin possible!");
+        rebb_log(PluginPause, "Core of mod is not running! No further work with plugin possible!");
     }
-*/
-    register_clcmd("rebb_ban", "BanBuildCmd", 0, "Ban Build");
-    
-    g_tSaveBanBuild = TrieCreate();
 }
 
-public BanBuildCmd(id){
-    if(!access(id, BAN_BUILD)) {
-        return PLUGIN_HANDLED;
-    }
-
-    new iPlayer, iBody;
-    get_user_aiming(id, iPlayer, iBody);
-
-    if(!is_user_connected(iPlayer)){
-        return PLUGIN_HANDLED;
-    }
-
-    new szAuthIDAdmin[MAX_AUTHID_LENGTH], szAuthID[MAX_AUTHID_LENGTH];
-    get_user_authid(id, szAuthIDAdmin, charsmax(szAuthIDAdmin));
-    get_user_authid(iPlayer, szAuthID, charsmax(szAuthID));
+public plugin_init() {
+    register_clcmd("rebb_ban", "BanBuildCmd", ACCESS_FLAG, "Ban Build");
     
-    if(TrieKeyExists(g_tSaveBanBuild, szAuthID)) {
-        TrieDeleteKey(g_tSaveBanBuild, szAuthID);
-        client_print_color(0, print_team_default, "%L", LANG_PLAYER, "REBB_UNBAN_BUILD", id, iPlayer);
-        log_rebb(PLUGIN, fmt("Admin %n [%s] unban to build the %n [%s]", id, szAuthIDAdmin, iPlayer, szAuthID));
+    g_BuildBans = TrieCreate();
+}
+
+public BanBuildCmd(id, flags) {
+    if(~get_user_flags(id) & flags) {
+        console_print(id, "* Insufficient permissions to use this command!");
+        return PLUGIN_HANDLED;
     }
-    else {
-        if(rebb_get_owned_ent(iPlayer)) {
-            rebb_grab_stop(iPlayer);
+
+    new target;
+    get_user_aiming(id, target);
+
+    if(!is_user_connected(target)) {
+        return PLUGIN_HANDLED;
+    }
+
+    new admin_authid[MAX_AUTHID_LENGTH], player_authid[MAX_AUTHID_LENGTH];
+    get_user_authid(id, admin_authid, charsmax(admin_authid));
+    get_user_authid(target, player_authid, charsmax(player_authid));
+    
+    if(TrieKeyExists(g_BuildBans, player_authid)) {
+        TrieDeleteKey(g_BuildBans, player_authid);
+        client_print_color(0, print_team_default, "%L", LANG_PLAYER, "REBB_UNBAN_BUILD", id, target);
+        rebb_log(PluginStateIgnore, "Admin %n [%s] unban to build the %n [%s]", id, admin_authid, target, player_authid);
+    } else {
+        if(rebb_get_owned_ent(target)) {
+            rebb_grab_stop(target);
         }
-        TrieSetCell(g_tSaveBanBuild, szAuthID, 1);
-        client_print_color(0, print_team_default, "%L", LANG_PLAYER, "REBB_BAN_BUILD", id, iPlayer);
-        log_rebb(PLUGIN, fmt("Admin %n [%s] ban to build the %n [%s]", id, szAuthIDAdmin, iPlayer, szAuthID));
+
+        TrieSetCell(g_BuildBans, player_authid, 1);
+        client_print_color(0, print_team_default, "%L", LANG_PLAYER, "REBB_BAN_BUILD", id, target);
+        rebb_log(PluginStateIgnore, "Admin %n [%s] ban to build the %n [%s]", id, admin_authid, target, player_authid);
     }
+
     return PLUGIN_HANDLED;
 }
 
 public rebb_grab_block(id) {
-    new szAuthID[MAX_AUTHID_LENGTH];
-    get_user_authid(id, szAuthID, charsmax(szAuthID));
+    new authid[MAX_AUTHID_LENGTH];
+    get_user_authid(id, authid, charsmax(authid));
 
-    if(TrieKeyExists(g_tSaveBanBuild, szAuthID)) {
+    if(TrieKeyExists(g_BuildBans, authid)) {
         client_print_color(id, print_team_default, "%L", LANG_PLAYER, "REBB_PLAYER_BAN_BUILD");
         return PLUGIN_HANDLED;
     }
-    return PLUGIN_CONTINUE;
-}
 
-public plugin_end() {
-    TrieDestroy(g_tSaveBanBuild);
+    return PLUGIN_CONTINUE;
 }

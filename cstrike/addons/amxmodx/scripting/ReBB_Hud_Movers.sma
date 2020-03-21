@@ -4,17 +4,19 @@
 #include <fakemeta>
 #include <re_basebuilder>
 
-new const VERSION[] = "0.0.2 Alpha";
+new const VERSION[] = "0.0.3 Alpha";
 
 new g_iShowHudMovers, g_FWShowHudMovers, g_HudShowMovers, g_BarrierEnt;
 
-public plugin_init() {
+public plugin_precache() {
     register_plugin("[ReBB] Hud Movers", VERSION, "ReBB");
-/*
+
     if(!rebb_core_is_running()) {
-        set_fail_state("Core of mod is not running! No further work with plugin possible!");
+        rebb_log(PluginPause, "Core of mod is not running! No further work with plugin possible!");
     }
-*/
+}
+
+public plugin_init() {
     bind_pcvar_num(
             create_cvar(
             .name = "rebb_show_hud_movers",
@@ -25,7 +27,7 @@ public plugin_init() {
     );
 
     g_HudShowMovers = CreateHudSyncObj();
-    g_BarrierEnt = rebb_barrier_ent();
+    g_BarrierEnt = rebb_get_barrier_ent_index();
 }
 
 public rebb_build_start() {

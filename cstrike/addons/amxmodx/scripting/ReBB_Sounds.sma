@@ -1,7 +1,7 @@
 #include <amxmodx>
 #include <re_basebuilder>
 
-new const VERSION[] = "0.1.2 Alpha";
+new const VERSION[] = "0.1.3 Alpha";
 new const CONFIG_NAME[] = "rebb_sounds.ini";
 
 new const g_DefaultKnifeSounds[][] = {
@@ -30,7 +30,7 @@ new const g_MiscKeys[][] = {
 
 enum (+=1) {
     SectionNone = -1,
-    BuildersWin,
+    HumansWin,
     ZombieWin,
     ZombieDeath,
     ZombiePain,
@@ -39,18 +39,20 @@ enum (+=1) {
     MiscSound
 };
 
-new Array:g_SoundsBuildersWin, Array:g_SoundsZombieWin, Array:g_SoundsZombieDeath, Array:g_SoundsZombiePain;
+new Array:g_SoundsHumansWin, Array:g_SoundsZombieWin, Array:g_SoundsZombieDeath, Array:g_SoundsZombiePain;
 new Trie:g_SoundsZombieKnife, Trie:g_SoundsZombieKnifeKeys, Trie:g_SoundsGameEvents, Trie:g_SoundsGameEventsKeys, Trie:g_SoundsMisc, Trie:g_SoundsMiscKeys;
 
-new g_BufferInfo[MAX_RESOURCE_PATH_LENGTH];
+new g_BufferInfo[64];
 
-new g_NumSoundsBuildersWin, g_NumSoundsZombieWin, g_NumSoundsZombieDeath, g_NumSoundsZombiePain;
+new g_NumSoundsHumansWin, g_NumSoundsZombieWin, g_NumSoundsZombieDeath, g_NumSoundsZombiePain;
 new g_Section;
 
 #define CONTAIN_WAV_FILE(%1)        (containi(%1, ".wav") != -1)
 
 public plugin_precache() {
-    g_SoundsBuildersWin = ArrayCreate(MAX_RESOURCE_PATH_LENGTH);
+    register_plugin("[ReBB] Sounds", VERSION, "ReBB");
+
+    g_SoundsHumansWin = ArrayCreate(MAX_RESOURCE_PATH_LENGTH);
     g_SoundsZombieWin = ArrayCreate(MAX_RESOURCE_PATH_LENGTH);
     g_SoundsZombieDeath = ArrayCreate(MAX_RESOURCE_PATH_LENGTH);
     g_SoundsZombiePain = ArrayCreate(MAX_RESOURCE_PATH_LENGTH);
@@ -77,20 +79,20 @@ public plugin_precache() {
         TrieSetCell(g_SoundsMiscKeys, g_MiscKeys[count], count);
     }
 
-    new sConfigsDir[MAX_RESOURCE_PATH_LENGTH];
-    get_localinfo("amxx_configsdir", sConfigsDir, charsmax(sConfigsDir));
-    format(sConfigsDir, charsmax(sConfigsDir), "%s/%s/%s", sConfigsDir, REBB_MOD_DIR_NAME, CONFIG_NAME);
+    new filedir[MAX_RESOURCE_PATH_LENGTH];
+    get_localinfo("amxx_configsdir", filedir, charsmax(filedir));
+    format(filedir, charsmax(filedir), "%s/%s/%s", filedir, REBB_MOD_DIR_NAME, CONFIG_NAME);
 
-    if(!file_exists(sConfigsDir)) {
-        set_fail_state("File '%s' not found!", sConfigsDir);   
+    if(!file_exists(filedir)) {
+        rebb_log(PluginPause, "File '%s' not found!", filedir);
     }
 
-    if(!parseConfigINI(sConfigsDir)) {
-        set_fail_state("Fatal parse error!");
+    if(!parseConfigINI(filedir)) {
+        rebb_log(PluginPause, "Fatal parse error!");
     }
 
-    if(g_SoundsBuildersWin) {
-        g_NumSoundsBuildersWin = ArraySize(g_SoundsBuildersWin);
+    if(g_SoundsHumansWin) {
+        g_NumSoundsHumansWin = ArraySize(g_SoundsHumansWin);
     }
         
     if(g_SoundsZombieWin) {
@@ -111,12 +113,10 @@ public plugin_precache() {
 }
 
 public plugin_init() {
-    register_plugin("[ReBB] Sounds", VERSION, "ReBB");
-/*
     if(!rebb_core_is_running()) {
-        set_fail_state("Core of mod is not running! No further work with plugin possible!");
+        rebb_log(PluginPause, "Core of mod is not running! No further work with plugin possible!");
     }
-*/    
+    
     register_message(get_user_msgid("SendAudio"), "MessageHook_SendAudio");
 
     RegisterHookChain(RH_SV_StartSound, "SV_StartSound_Pre", false);
@@ -166,9 +166,9 @@ public MessageHook_SendAudio()  {
 
 public RoundEnd_Post(WinStatus:status, ScenarioEventEndRound:event) {
     switch(event) {
-        case ROUND_HUMANS_WIN: rg_send_audio(0, fmt("%a", ArrayGetStringHandle(g_SoundsBuildersWin, random(g_NumSoundsBuildersWin))));
+        case ROUND_HUMANS_WIN: rg_send_audio(0, fmt("%a", ArrayGetStringHandle(g_SoundsHumansWin, random(g_NumSoundsHumansWin))));
         case ROUND_ZOMBIES_WIN: rg_send_audio(0, fmt("%a", ArrayGetStringHandle(g_SoundsZombieWin, random(g_NumSoundsZombieWin))));
-        case ROUND_GAME_OVER: rg_send_audio(0, fmt("%a", ArrayGetStringHandle(g_SoundsBuildersWin, random(g_NumSoundsBuildersWin))));
+        case ROUND_GAME_OVER: rg_send_audio(0, fmt("%a", ArrayGetStringHandle(g_SoundsHumansWin, random(g_NumSoundsHumansWin))));
     }
 }
 
@@ -220,8 +220,8 @@ public bool:ReadCFGNewSection(INIParser:handle, const section[], bool:invalid_to
         return false;
     }
 
-    if(equal(section, "builders_win")) {
-        g_Section = BuildersWin;
+    if(equal(section, "humans_win")) {
+        g_Section = HumansWin;
         return true;
     }
 
@@ -285,7 +285,7 @@ public bool:ReadCFGKeyValue(INIParser:handle, const key[], const value[]) {
 
     new keyid;
     switch(g_Section) {
-        case BuildersWin: ArrayPushString(g_SoundsBuildersWin, key);
+        case HumansWin: ArrayPushString(g_SoundsHumansWin, key);
         case ZombieWin: ArrayPushString(g_SoundsZombieWin, key);
         case ZombieDeath: ArrayPushString(g_SoundsZombieDeath, key);
         case ZombiePain: ArrayPushString(g_SoundsZombiePain, key);

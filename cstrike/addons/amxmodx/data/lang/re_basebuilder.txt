@@ -44,6 +44,3 @@ REBB_HUD_GET_LAST_MOVER = Двигает: НИКТО^nДвигал: %n
 REBB_HUD_GET_MOVER_AND_LAST_MOVER = Двигает: %n^nДвигал: %n
 REBB_HUD_BLOCK_NOT_MOVE = Блок никто не двигал
 REBB_HUD_BLOCK_OWNER = Владелец: %n
-REBB_UNBAN_BUILD = Админ ^4%n ^1разбанил стройку ^4%n
-REBB_BAN_BUILD = Админ ^4%n ^1забанил стройку ^4%n
-REBB_PLAYER_BAN_BUILD = У Вас заблокирована функция стройки!
