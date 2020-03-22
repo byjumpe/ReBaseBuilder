@@ -111,13 +111,7 @@ public plugin_precache() {
     g_PluginId = register_plugin("[ReBB] Core", VERSION, "ReBB");
 
     RegisterCoreForwards();
-
-    g_CanRegister = true;
-    ExecuteForward(g_Forward[FWD_CLASSES_REG_INIT]);
-
-    if(!g_ZombieClassesCount) {
-        rebb_log(PluginPause, "Registered zombie classes not found!");
-    }
+    RegisterZombieClasses();
 }
 
 public plugin_init() {
@@ -664,15 +658,7 @@ bool:PrecacheModelEx(Array:arr, const model_dir[], const model[]) {
     return true;
 }
 
-public plugin_natives() {
-    register_native("rebb_core_is_running", "native_core_is_running");
-    register_native("rebb_register_zombie_class", "native_register_zombie_class");
-    register_native("rebb_get_player_class_index", "native_get_player_class_index");
-    register_native("rebb_is_building_phase", "native_is_building_phase");
-    register_native("rebb_is_preparation_phase", "native_is_preparation_phase");
-    register_native("rebb_is_zombies_released", "native_is_zombies_released");
-    register_native("rebb_get_barrier_ent_index", "native_get_barrier_ent_index");
-
+RegisterZombieClasses() {
     g_ZombieName = ArrayCreate(MAX_NAME_LENGTH, 1);
     g_ZombieInfo = ArrayCreate(MAX_CLASS_INFO_LENGTH, 1);
     g_ZombieModel = ArrayCreate(MAX_RESOURCE_PATH_LENGTH, 1);
@@ -681,6 +667,24 @@ public plugin_natives() {
     g_ZombieSpeed = ArrayCreate(1, 1);
     g_ZombieGravity = ArrayCreate(1, 1);
     g_ZombieFlags = ArrayCreate(1, 1);
+
+    g_CanRegister = true;
+
+    ExecuteForward(g_Forward[FWD_CLASSES_REG_INIT]);
+
+    if(!g_ZombieClassesCount) {
+        rebb_log(PluginPause, "Registered zombie classes not found!");
+    }
+}
+
+public plugin_natives() {
+    register_native("rebb_core_is_running", "native_core_is_running");
+    register_native("rebb_register_zombie_class", "native_register_zombie_class");
+    register_native("rebb_get_player_class_index", "native_get_player_class_index");
+    register_native("rebb_is_building_phase", "native_is_building_phase");
+    register_native("rebb_is_preparation_phase", "native_is_preparation_phase");
+    register_native("rebb_is_zombies_released", "native_is_zombies_released");
+    register_native("rebb_get_barrier_ent_index", "native_get_barrier_ent_index");
 }
 
 public native_core_is_running(const plugin, const argc) {

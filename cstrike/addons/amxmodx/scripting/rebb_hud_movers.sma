@@ -53,7 +53,7 @@ public FW_Traceline(Float:start[3], Float:end[3], conditions, id, trace) {
         return PLUGIN_HANDLED;
     }
 
-    new /*iEnt, */iBody;
+    new iBody;
     get_user_aiming(id, iEnt, iBody);
         
     new szTarget[7];

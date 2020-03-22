@@ -258,7 +258,7 @@ native rebb_get_barrier_ent_index();
 /**
  * Owmed Ent.
  *
- * @return                  g_iOwnedEnt (g_BarrierEnt).
+ * @return                  g_iOwnedEnt.
  */
 native rebb_get_owned_ent(id);
 

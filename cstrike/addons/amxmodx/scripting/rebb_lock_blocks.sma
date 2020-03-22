@@ -12,7 +12,7 @@ new const LOCK_BLOCK_CMDS[][] = {
 };
 
 public plugin_precache() {
-    register_plugin("[ReBB] Lock Blocks", "0.0.4 Alpha", "ReBB");
+    register_plugin("[ReBB] Lock Blocks", "0.0.5 Alpha", "ReBB");
 
     if(!rebb_core_is_running()) {
         rebb_log(PluginPause, "Core of mod is not running! No further work with plugin possible!");
@@ -55,9 +55,7 @@ public CSGameRules_RestartRound_Pre() {
 }
 
 public LockBlockCmd(id){
-    //new CanBuild = rebb_is_building_phase();
-
-    if(!rebb_is_building_phase()/*CanBuild*/ || is_user_zombie(id) || !g_iLockBlocks) {
+    if(!rebb_is_building_phase() || is_user_zombie(id) || !g_iLockBlocks) {
         return PLUGIN_HANDLED;
     }
 

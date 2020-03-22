@@ -220,7 +220,7 @@ public bool:ReadCFGNewSection(INIParser:handle, const section[], bool:invalid_to
         return false;
     }
 
-    if(equal(section, "humans_win")) {
+    if(equal(section, "builders_win")) {
         g_Section = BuildersWin;
         return true;
     }

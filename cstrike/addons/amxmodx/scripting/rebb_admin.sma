@@ -8,7 +8,7 @@
 new Trie:g_BuildBans;
 
 public plugin_precache() {
-    register_plugin("[ReBB] Lock Blocks", "0.0.3 Alpha", "ReBB");
+    register_plugin("[ReBB] Admin", "0.0.3 Alpha", "ReBB");
 
     if(!rebb_core_is_running()) {
         rebb_log(PluginPause, "Core of mod is not running! No further work with plugin possible!");

@@ -10,7 +10,7 @@ const Float:MAX_MOVE_DISTANCE = 768.0;
 const Float:MIN_MOVE_DISTANCE = 32.0;
 const Float:MIN_DIST_SET = 64.0;
 
-const Float:OBJECT_PUSHPULLRATE     = 4.0;
+const Float:OBJECT_PUSHPULLRATE = 4.0;
 
 enum any:POS { Float:X, Float:Y, Float:Z };
 
@@ -31,7 +31,7 @@ new Float:g_fOffset1[MAX_PLAYERS +1], Float:g_fOffset2[MAX_PLAYERS +1], Float:g_
 new HookChain:g_hPreThink;
 
 public plugin_precache() {
-    register_plugin("[ReBB] Grab Blocks", "0.0.5 Alpha", "ReBB");
+    register_plugin("[ReBB] Grab Blocks", "0.1.6 Alpha", "ReBB");
 
     if(!rebb_core_is_running()) {
         rebb_log(PluginPause, "Core of mod is not running! No further work with plugin possible!");
@@ -233,11 +233,6 @@ public CmdGrabMove(id) {
         return PLUGIN_HANDLED;
     }
 
-    set_entvar(iEnt, var_rendermode, kRenderTransColor);
-    set_entvar(iEnt, var_rendercolor, Float:{ 000.0, 150.0, 000.0 });
-    //set_entvar(iEnt, var_rendercolor, g_fBlockColor[g_iPlayerColor[id]]);
-    set_entvar(iEnt, var_renderamt, 100.0);
-
     MovingEnt(iEnt);
     SetEntMover(iEnt, id);
     g_iOwnedEnt[id] = iEnt;
@@ -256,8 +251,6 @@ public CmdGrabStop(id) {
     new iEnt = g_iOwnedEnt[id];
 
     ExecuteForward(g_Forward[FWD_DROP_ENTITY_PRE], _, id, iEnt);
-
-    set_entvar(iEnt, var_rendermode, kRenderNormal);
 
     UnsetEntMover(iEnt);
     SetLastMover(iEnt, id);
@@ -286,6 +279,7 @@ RegisterGrabForwards() {
 
 public plugin_natives() {
     register_native("rebb_grab_stop", "native_grab_stop");
+    register_native("rebb_get_owned_ent", "native_get_owned_ent");
 }
 public native_grab_stop(iPlugin, iParams) {
     new id = get_param(1);
@@ -294,4 +288,12 @@ public native_grab_stop(iPlugin, iParams) {
     }
 
     return CmdGrabStop(id);
+}
+
+public native_get_owned_ent(iPlugin, iParams) {
+    new id = get_param(1);
+    if(!is_user_connected(id)){
+        return -1;
+    }
+    return g_iOwnedEnt[id];
 }
