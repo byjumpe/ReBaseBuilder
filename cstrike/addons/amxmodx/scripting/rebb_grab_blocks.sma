@@ -16,6 +16,7 @@ enum any:POS { Float:X, Float:Y, Float:Z };
 
 enum FORWARDS_LIST {
     FWD_PUSH_PULL,
+    FWD_GRAB_ENTITY,
     FWD_GRAB_ENTITY_PRE,
     FWD_GRAB_ENTITY_POST,
     FWD_DROP_ENTITY_PRE,
@@ -24,13 +25,13 @@ enum FORWARDS_LIST {
 
 new g_Forward[FORWARDS_LIST];
 new g_iResetEnt, g_iLockBlocks, g_BarrierEnt, g_iOwnedEnt[MAX_PLAYERS +1];
-new Float: g_fEntDist[MAX_PLAYERS +1];
-new Float: g_fOffset1[MAX_PLAYERS +1], Float: g_fOffset2[MAX_PLAYERS +1], Float: g_fOffset3[MAX_PLAYERS +1];
+new Float:g_fEntDist[MAX_PLAYERS +1];
+new Float:g_fOffset1[MAX_PLAYERS +1], Float:g_fOffset2[MAX_PLAYERS +1], Float:g_fOffset3[MAX_PLAYERS +1];
 
-new HookChain: g_hPreThink;
+new HookChain:g_hPreThink;
 
 public plugin_precache() {
-    register_plugin("[ReBB] Grab Blocks", "0.0.4 Alpha", "ReBB");
+    register_plugin("[ReBB] Grab Blocks", "0.0.5 Alpha", "ReBB");
 
     if(!rebb_core_is_running()) {
         rebb_log(PluginPause, "Core of mod is not running! No further work with plugin possible!");
@@ -124,12 +125,12 @@ public CBasePlayer_PreThink(id) {
         CmdGrabStop(id);
     }
 
-    if(/*!IsAlive(id) || */is_user_zombie(id)) {
+    if(is_user_zombie(id)) {
         CmdGrabStop(id);
         return;
     }
 
-    if(/*!g_iOwnedEnt[id] || !is_entity(g_iOwnedEnt[id])*/is_nullent(g_iOwnedEnt[id])) {
+    if(is_nullent(g_iOwnedEnt[id])) {
         return;
     }
 
@@ -179,12 +180,17 @@ public CBasePlayer_PreThink(id) {
 }
 
 public CmdGrabMove(id) {
-    //new CanBuild = rebb_is_building_phase();
-    if(/*!CanBuild*/ !rebb_is_building_phase() || is_user_zombie(id)) {
+    if(!rebb_is_building_phase() || is_user_zombie(id)) {
         return PLUGIN_HANDLED;
     }
 
-    if(/*g_iOwnedEnt[id] && is_entity(g_iOwnedEnt[id])*/!is_nullent(g_iOwnedEnt[id])) {
+    new iReturn;
+    ExecuteForward(g_Forward[FWD_GRAB_ENTITY], iReturn, id);
+    if(iReturn == PLUGIN_HANDLED) {
+        return PLUGIN_HANDLED;
+    }
+
+    if(!is_nullent(g_iOwnedEnt[id])) {
         CmdGrabStop(id);
     }
 
@@ -271,6 +277,7 @@ RegisterHooks() {
 
 RegisterGrabForwards() {
     g_Forward[FWD_PUSH_PULL] = CreateMultiForward("rebb_block_pushpull", ET_IGNORE, FP_CELL, FP_CELL, FP_CELL);
+    g_Forward[FWD_GRAB_ENTITY] = CreateMultiForward("rebb_grab_block", ET_STOP, FP_CELL);
     g_Forward[FWD_GRAB_ENTITY_PRE] = CreateMultiForward("rebb_grab_pre", ET_IGNORE, FP_CELL, FP_CELL);
     g_Forward[FWD_GRAB_ENTITY_POST] = CreateMultiForward("rebb_grab_post", ET_IGNORE, FP_CELL, FP_CELL);
     g_Forward[FWD_DROP_ENTITY_PRE] = CreateMultiForward("rebb_drop_pre", ET_IGNORE, FP_CELL, FP_CELL);
