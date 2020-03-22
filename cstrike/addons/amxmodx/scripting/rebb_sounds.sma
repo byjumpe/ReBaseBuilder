@@ -30,7 +30,7 @@ new const g_MiscKeys[][] = {
 
 enum (+=1) {
     SectionNone = -1,
-    HumansWin,
+    BuildersWin,
     ZombieWin,
     ZombieDeath,
     ZombiePain,
@@ -39,12 +39,12 @@ enum (+=1) {
     MiscSound
 };
 
-new Array:g_SoundsHumansWin, Array:g_SoundsZombieWin, Array:g_SoundsZombieDeath, Array:g_SoundsZombiePain;
+new Array:g_SoundsBuildersWin, Array:g_SoundsZombieWin, Array:g_SoundsZombieDeath, Array:g_SoundsZombiePain;
 new Trie:g_SoundsZombieKnife, Trie:g_SoundsZombieKnifeKeys, Trie:g_SoundsGameEvents, Trie:g_SoundsGameEventsKeys, Trie:g_SoundsMisc, Trie:g_SoundsMiscKeys;
 
 new g_BufferInfo[64];
 
-new g_NumSoundsHumansWin, g_NumSoundsZombieWin, g_NumSoundsZombieDeath, g_NumSoundsZombiePain;
+new g_NumSoundsBuildersWin, g_NumSoundsZombieWin, g_NumSoundsZombieDeath, g_NumSoundsZombiePain;
 new g_Section;
 
 #define CONTAIN_WAV_FILE(%1)        (containi(%1, ".wav") != -1)
@@ -52,7 +52,7 @@ new g_Section;
 public plugin_precache() {
     register_plugin("[ReBB] Sounds", VERSION, "ReBB");
 
-    g_SoundsHumansWin = ArrayCreate(MAX_RESOURCE_PATH_LENGTH);
+    g_SoundsBuildersWin = ArrayCreate(MAX_RESOURCE_PATH_LENGTH);
     g_SoundsZombieWin = ArrayCreate(MAX_RESOURCE_PATH_LENGTH);
     g_SoundsZombieDeath = ArrayCreate(MAX_RESOURCE_PATH_LENGTH);
     g_SoundsZombiePain = ArrayCreate(MAX_RESOURCE_PATH_LENGTH);
@@ -91,8 +91,8 @@ public plugin_precache() {
         rebb_log(PluginPause, "Fatal parse error!");
     }
 
-    if(g_SoundsHumansWin) {
-        g_NumSoundsHumansWin = ArraySize(g_SoundsHumansWin);
+    if(g_SoundsBuildersWin) {
+        g_NumSoundsBuildersWin = ArraySize(g_SoundsBuildersWin);
     }
         
     if(g_SoundsZombieWin) {
@@ -166,9 +166,9 @@ public MessageHook_SendAudio()  {
 
 public RoundEnd_Post(WinStatus:status, ScenarioEventEndRound:event) {
     switch(event) {
-        case ROUND_HUMANS_WIN: rg_send_audio(0, fmt("%a", ArrayGetStringHandle(g_SoundsHumansWin, random(g_NumSoundsHumansWin))));
+        case ROUND_HUMANS_WIN: rg_send_audio(0, fmt("%a", ArrayGetStringHandle(g_SoundsBuildersWin, random(g_NumSoundsBuildersWin))));
         case ROUND_ZOMBIES_WIN: rg_send_audio(0, fmt("%a", ArrayGetStringHandle(g_SoundsZombieWin, random(g_NumSoundsZombieWin))));
-        case ROUND_GAME_OVER: rg_send_audio(0, fmt("%a", ArrayGetStringHandle(g_SoundsHumansWin, random(g_NumSoundsHumansWin))));
+        case ROUND_GAME_OVER: rg_send_audio(0, fmt("%a", ArrayGetStringHandle(g_SoundsBuildersWin, random(g_NumSoundsBuildersWin))));
     }
 }
 
@@ -221,7 +221,7 @@ public bool:ReadCFGNewSection(INIParser:handle, const section[], bool:invalid_to
     }
 
     if(equal(section, "humans_win")) {
-        g_Section = HumansWin;
+        g_Section = BuildersWin;
         return true;
     }
 
@@ -285,7 +285,7 @@ public bool:ReadCFGKeyValue(INIParser:handle, const key[], const value[]) {
 
     new keyid;
     switch(g_Section) {
-        case HumansWin: ArrayPushString(g_SoundsHumansWin, key);
+        case BuildersWin: ArrayPushString(g_SoundsBuildersWin, key);
         case ZombieWin: ArrayPushString(g_SoundsZombieWin, key);
         case ZombieDeath: ArrayPushString(g_SoundsZombieDeath, key);
         case ZombiePain: ArrayPushString(g_SoundsZombiePain, key);
