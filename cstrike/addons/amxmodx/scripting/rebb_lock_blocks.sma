@@ -5,21 +5,21 @@
 
 new g_iLockBlocks, g_iMaxLockBlocks, g_iOwnedEntities[MAX_PLAYERS +1], g_BarrierEnt;
 
-new const VERSION[] = "0.0.2 Alpha";
-
 // List of client commands that locked block
 new const LOCK_BLOCK_CMDS[][] = {
     "say /lock",
     "say_team /lock"
 };
 
-public plugin_init() {
-    register_plugin("[ReBB] Lock Blocks", VERSION, "ReBB");
-/*
+public plugin_precache() {
+    register_plugin("[ReBB] Lock Blocks", "0.0.4 Alpha", "ReBB");
+
     if(!rebb_core_is_running()) {
-        set_fail_state("Core of mod is not running! No further work with plugin possible!");
-    } 
-*/
+        rebb_log(PluginPause, "Core of mod is not running! No further work with plugin possible!");
+    }
+}
+
+public plugin_init() {
     RegisterHookChain(RG_CSGameRules_RestartRound, "CSGameRules_RestartRound_Pre", false);
 
     bind_pcvar_num(
@@ -43,7 +43,7 @@ public plugin_init() {
         register_clcmd(LOCK_BLOCK_CMDS[i], "LockBlockCmd");
     }
 
-    g_BarrierEnt = rebb_barrier_ent();
+    g_BarrierEnt = rebb_get_barrier_ent_index();
 }
 
 public client_disconnected(id) {

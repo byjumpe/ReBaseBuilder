@@ -25,28 +25,14 @@ Thx for the mod idea and original code
 
 #include <amxmodx>
 #include <amxmisc>
-#include <fakemeta>
-#include <fakemeta_util>
 #include <hamsandwich>
 #include <time>
 #include <re_basebuilder>
 
-new const VERSION[] = "0.4.16 Alpha";
-
+new const VERSION[] = "0.5.25 Alpha";
 new const CONFIG_NAME[] = "ReBaseBuilder.cfg";
-// List of client commands that open zombie class menu
-new const MENU_CMDS[][] = {
-    "say /zm",
-    "say_team /zm"
-};
 
-new const RADIO_CMDS[][] = {
-    "radio1",
-    "radio2",
-    "radio3"
-};
-
-const Float:MAX_HOLDTIME            = 20.0;
+const Float:MAX_HOLDTIME = 20.0;
 
 enum COLOR { R, G, B };
 
@@ -71,8 +57,14 @@ enum any:MULTYPLAY_CVARS {
     MP_ROUNDOVER,
 };
 
+enum any:DATA_LIST {
+    TeamName:LAST_TEAM,     // мб просто сетать в геймлибе тиму? и не хранить это в плагине?
+    bool:FIRST_SPAWN,
+    ZOMBIE_CLASS,
+};
+
 enum FORWARDS_LIST {
-    FWD_CLASS_REG_REQUEST,
+    FWD_CLASSES_REG_INIT,
     FWD_CLASS_REGISTERED,
     FWD_BUILD_START,
     FWD_PREPARATION_START,
@@ -88,70 +80,60 @@ new const g_MpCvars[MULTYPLAY_CVARS][] = {
 
 new g_Pointer[MULTYPLAY_CVARS];
 new g_Forward[FORWARDS_LIST];
-
 new g_Cvar[CVAR_LIST];
 
+new g_PlayerInfo[MAX_PLAYERS + 1][DATA_LIST];
+
+new bool:g_ZombiesReleased;
+new bool:g_CanRegister;
+new bool:g_SwapTeams;
+new bool:g_CanBuild;
+new bool:g_IsPrepTime;
+new bool:g_IsRoundEnded;
+
+new Array:g_ZombieName;
+new Array:g_ZombieInfo;
+new Array:g_ZombieModel;
+new Array:g_ZombieHandModel;
+new Array:g_ZombieHP;
+new Array:g_ZombieSpeed;
+new Array:g_ZombieGravity;
+new Array:g_ZombieFlags;
+
+new g_ZombieClassesCount;
+new g_CountTime;
+
 new g_BarrierEnt;
-
-new TeamName:g_iTeam[MAX_PLAYERS +1], g_iCountTime, g_iZombieClass[MAX_PLAYERS +1];
-new bool: g_bFirstSpawn[MAX_PLAYERS +1], bool: g_bSwapTeams, bool: g_bCanBuild, bool: g_bPrepTime, bool: g_bRoundEnded;
-new bool: g_bZombiesReleased;
-
-new bool:g_bCanRegister;
-
-new Array: g_ZombieName;
-new Array: g_ZombieInfo;
-new Array: g_ZombieModel;
-new Array: g_ZombieHandModel;
-new Array: g_ZombieHP;
-new Array: g_ZombieSpeed;
-new Array: g_ZombieGravity;
-new Array: g_ZombieFlags;
-new g_ClassesCount;
-
 new g_SyncHud;
 new g_PluginId;
 
 public plugin_precache() {
+    g_PluginId = register_plugin("[ReBB] Core", VERSION, "ReBB");
+
     RegisterCoreForwards();
 
-    g_ZombieName = ArrayCreate(MAX_NAME_LENGTH, 1);
-    g_ZombieInfo = ArrayCreate(MAX_CLASS_INFO_LENGTH, 1);
-    g_ZombieModel = ArrayCreate(MAX_RESOURCE_PATH_LENGTH, 1);
-    g_ZombieHandModel = ArrayCreate(MAX_RESOURCE_PATH_LENGTH, 1);
-    g_ZombieHP = ArrayCreate(1, 1);
-    g_ZombieSpeed = ArrayCreate(1, 1);
-    g_ZombieGravity = ArrayCreate(1, 1);
-    g_ZombieFlags = ArrayCreate(1, 1);
+    g_CanRegister = true;
+    ExecuteForward(g_Forward[FWD_CLASSES_REG_INIT]);
 
-    // chto za hernya dalee po kody nigde ne prisvaivaetsya false, t.e. ono vserda true
-    g_bCanRegister = true;
-
-    ExecuteForward(g_Forward[FWD_CLASS_REG_REQUEST]);
-
-    if(!g_ClassesCount) {
-        set_fail_state("Registered zombie classes not found!");
+    if(!g_ZombieClassesCount) {
+        rebb_log(PluginPause, "Registered zombie classes not found!");
     }
-
-    new sConfigsDir[PLATFORM_MAX_PATH];
-    get_localinfo("amxx_configsdir", sConfigsDir, charsmax(sConfigsDir));
-    server_cmd("exec %s/%s/%s", sConfigsDir, REBB_MOD_DIR_NAME, CONFIG_NAME);
-    server_exec();
 }
 
 public plugin_init() {
-    g_PluginId = register_plugin("[ReAPI] Base Builder", VERSION, "ReBB");
     register_dictionary("re_basebuilder.txt");
 
     RegisterHooks();
     RegisterCvars();
 
-    for(new i; i < sizeof(MENU_CMDS); i++) {
-        register_clcmd(MENU_CMDS[i], "Zombie_Menu");
+    new const menu_cmd[][] = { "say /zm", "say_team /zm" };
+    for(new i; i < sizeof menu_cmd; i++) {
+        register_clcmd(menu_cmd[i], "Zombie_Menu");
     }
-    new const szBlockCallBack[] = "BlockRadioCmd";
-    for(new i; i < sizeof(RADIO_CMDS); i++) {
-            register_clcmd(RADIO_CMDS[i], szBlockCallBack);
+
+    new const radio_cmd[][] = { "radio1", "radio2", "radio3" };
+    for(new i; i < sizeof radio_cmd; i++) {
+        register_clcmd(radio_cmd[i], "BlockRadioCmd");
     }
 
     register_event("Health", "Event_Health", "be", "1>0");
@@ -160,8 +142,8 @@ public plugin_init() {
     g_SyncHud = CreateHudSyncObj();
     g_BarrierEnt = FindEntity("func_wall", "barrier");
 
-    if(!g_BarrierEnt) {
-        set_fail_state("There is no barrier on this map!");
+    if(is_nullent(g_BarrierEnt)) {
+        rebb_log(PluginPause, "There is no barrier on this map!");
     }
 }
 
@@ -173,28 +155,43 @@ public OnConfigsExecuted() {
 public plugin_cfg() {
     GetCvarsPointers();
     SetCvarsValues();
-}
 
-public client_putinserver(id) {
-    if(!is_user_bot(id)) {
-        set_member(id, m_bIgnoreRadio, true);
+    new filedir[MAX_BUFFER_LENGTH];
+    get_localinfo("amxx_configsdir", filedir, charsmax(filedir));
+    format(filedir, charsmax(filedir), "%s/%s/%s", filedir, REBB_MOD_DIR_NAME, CONFIG_NAME);
+
+    if(file_exists(filedir)) {
+        server_cmd("exec %s", filedir);
+        server_exec();
+    } else {
+        rebb_log(PluginPause, "Configuration file '%s' not found!", filedir);
     }
 }
 
+public client_putinserver(id) {
+    if(is_user_bot(id) || is_user_hltv(id)) {
+        return PLUGIN_HANDLED;
+    }
+
+    set_member(id, m_bIgnoreRadio, true);
+    g_PlayerInfo[id][LAST_TEAM] = get_member(id, m_iTeam);
+
+    return PLUGIN_HANDLED;
+}
+
 public client_disconnected(id) {
-    g_iTeam[id] = TEAM_UNASSIGNED;
+    g_PlayerInfo[id][LAST_TEAM] = TEAM_UNASSIGNED;
+    g_PlayerInfo[id][FIRST_SPAWN] = true;
+    g_PlayerInfo[id][ZOMBIE_CLASS] = 0;   
 
-    g_bFirstSpawn[id] = true;
-    g_iZombieClass[id] = 0;
-
-    remove_task(id+TASK_RESPAWN);
-    remove_task(id+TASK_HEALTH);
+    remove_task(id + TASK_RESPAWN);
+    remove_task(id + TASK_HEALTH);
 }
 
 public RoundEnd_Post(WinStatus:status, ScenarioEventEndRound:event) {
-    g_bRoundEnded = true;
-    g_bCanBuild = false;
-    g_bPrepTime = false;
+    g_IsRoundEnded = true;
+    g_CanBuild = false;
+    g_IsPrepTime = false;
 
     new players[MAX_PLAYERS], count, player;
     get_players(players, count);
@@ -210,15 +207,15 @@ public RoundEnd_Post(WinStatus:status, ScenarioEventEndRound:event) {
 
     switch(event) {
         case ROUND_HUMANS_WIN: {
-            g_bSwapTeams = true;
+            g_SwapTeams = true;
             client_print(0, print_center, "%L", LANG_PLAYER, "REBB_BUILDERS_WIN");
         }
         case ROUND_ZOMBIES_WIN: {
-            g_bSwapTeams = true;
+            g_SwapTeams = true;
             client_print(0, print_center, "%L", LANG_PLAYER, "REBB_ZOMBIE_WIN");
         }
         case ROUND_GAME_OVER: {
-            g_bSwapTeams = true;
+            g_SwapTeams = true;
             rg_update_teamscores(1, 0, true);
             client_print(0, print_center, "%L", LANG_PLAYER, "REBB_BUILDERS_WIN");
         }
@@ -228,7 +225,7 @@ public RoundEnd_Post(WinStatus:status, ScenarioEventEndRound:event) {
     }
 }
 
-public CBasePlayer_DropPlayerItem_Pre(const id, const pszItemName[]) {
+public CBasePlayer_DropPlayerItem_Pre(const id) {
     if(!g_Cvar[BLOCK_DROP_WEAPON]) {
         return HC_CONTINUE;
     }
@@ -239,17 +236,16 @@ public CBasePlayer_DropPlayerItem_Pre(const id, const pszItemName[]) {
     return HC_SUPERCEDE;
 }
 
-public CBasePlayer_HasRestrictItem_Pre(id, ItemID:iItem, ItemRestType:iRestType) {
+public CBasePlayer_HasRestrictItem_Pre(const id) {
     if(!is_user_connected(id) || !is_user_zombie(id)) {
         return HC_CONTINUE;
     }
     
     SetHookChainReturn(ATYPE_BOOL, true);
-
     return HC_SUPERCEDE;
 }
 
-public CBasePlayer_OnSpawnEquip_Pre(id, bool:bAddDefault, bool:bEquipGame) {
+public CBasePlayer_OnSpawnEquip_Pre(const id, bool:bAddDefault, bool:bEquipGame) {
     if(!is_user_connected(id)) {
         return HC_CONTINUE;
     }
@@ -263,35 +259,38 @@ public CBasePlayer_OnSpawnEquip_Pre(id, bool:bAddDefault, bool:bEquipGame) {
     return HC_SUPERCEDE;
 }
 
-public CBasePlayer_Spawn_Post(id) {
+public CBasePlayer_Spawn_Post(const id) {
     if(!is_user_alive(id)) {
         return HC_CONTINUE;
     }
 
-    remove_task(id+TASK_HEALTH);
-    remove_task(id+TASK_RESPAWN);
+    remove_task(id + TASK_HEALTH);
+    remove_task(id + TASK_RESPAWN);
 
-    if(g_iTeam[id] == TEAM_UNASSIGNED) {
-        g_iTeam[id] = get_member(id, m_iTeam);
+    // Бредовая идея, ибо тима может быть спектры т.к. это нигде не обработано
+    if(g_PlayerInfo[id][LAST_TEAM] == TEAM_UNASSIGNED) {
+        g_PlayerInfo[id][LAST_TEAM] = get_member(id, m_iTeam);
     }
 
-    if(g_iTeam[id] != TEAM_ZOMBIE) {
-        if(g_bPrepTime) {
+    if(g_PlayerInfo[id][LAST_TEAM] != TEAM_ZOMBIE) {
+        if(g_IsPrepTime) {
             rebb_open_guns_menu(id);
         }
 
         rg_reset_user_model(id, true);
     } else {
-        if(g_bFirstSpawn[id]) {
+        if(g_PlayerInfo[id][FIRST_SPAWN]) {
             Zombie_Menu(id);
-            g_bFirstSpawn[id] = false;
+            g_PlayerInfo[id][FIRST_SPAWN] = false;
         }
 
-        set_entvar(id, var_health, Float:ArrayGetCell(g_ZombieHP, g_iZombieClass[id]));
-        set_entvar(id, var_maxspeed, Float:ArrayGetCell(g_ZombieSpeed, g_iZombieClass[id]));
-        set_entvar(id, var_gravity, Float:ArrayGetCell(g_ZombieGravity, g_iZombieClass[id]));
+        set_entvar(id, var_health, Float:ArrayGetCell(g_ZombieHP, g_PlayerInfo[id][ZOMBIE_CLASS]));
+        set_entvar(id, var_maxspeed, Float:ArrayGetCell(g_ZombieSpeed, g_PlayerInfo[id][ZOMBIE_CLASS]));
+        set_entvar(id, var_gravity, Float:ArrayGetCell(g_ZombieGravity, g_PlayerInfo[id][ZOMBIE_CLASS]));
 
-        rg_set_user_model(id, fmt("%a", ArrayGetStringHandle(g_ZombieModel, g_iZombieClass[id])), true); // TEST
+        new zombie_model[MAX_BUFFER_LENGTH];
+        ArrayGetString(g_ZombieModel, g_PlayerInfo[id][ZOMBIE_CLASS], zombie_model, charsmax(zombie_model));
+        rg_set_user_model(id, zombie_model, true);
     }
 
     set_task_ex(MAX_HOLDTIME, "taskPlayerHud", id+TASK_HEALTH, .flags = SetTask_Repeat);
@@ -306,47 +305,45 @@ public CBasePlayer_ResetMaxSpeed_Post(id) {
 
     if(is_user_zombie(id)) {
         // NOTE: this will break any external speed modificator (like temporary speed bost item in zombie escape)
-        set_entvar(id, var_maxspeed, Float:ArrayGetCell(g_ZombieSpeed, g_iZombieClass[id]));
+        set_entvar(id, var_maxspeed, Float:ArrayGetCell(g_ZombieSpeed, g_PlayerInfo[id][ZOMBIE_CLASS]));
     }
 
     return HC_CONTINUE;
 }
 
-public CBasePlayer_Killed_Post(iVictim, iKiller, iGibType) {
-    if(!is_user_connected(iVictim)) {
+public CBasePlayer_Killed_Post(victim, iKiller, iGibType) {
+    if(!is_user_connected(victim)) {
         return HC_CONTINUE;
     }
 
-    rebb_grab_stop(iVictim);
+    rebb_grab_stop(victim);
 
-    if(task_exists(iVictim+TASK_HEALTH)) {
-        remove_task(iVictim+TASK_HEALTH);
-        ClearSyncHud(iVictim, g_SyncHud);
-    }
+    remove_task(victim + TASK_HEALTH);
+    ClearSyncHud(victim, g_SyncHud);
 
-    new team = get_member(iVictim, m_iTeam);
+    new team = get_member(victim, m_iTeam);
     if(team == TEAM_ZOMBIE) {
-        if(g_Cvar[ZOMBIE_RESPAWN_DELAY] && !g_bRoundEnded) {
+        if(g_Cvar[ZOMBIE_RESPAWN_DELAY] && !g_IsRoundEnded) {
             if(g_Cvar[ZOMBIE_RESPAWN_DELAY] >= 1.0) {
-                client_print(iVictim, print_center, "%L", LANG_PLAYER, "REBB_ZOMBIE_RESPAWN", g_Cvar[ZOMBIE_RESPAWN_DELAY]);
+                client_print(victim, print_center, "%L", LANG_PLAYER, "REBB_ZOMBIE_RESPAWN", g_Cvar[ZOMBIE_RESPAWN_DELAY]);
             }
 
-            set_task_ex(g_Cvar[ZOMBIE_RESPAWN_DELAY], "Respawn", iVictim+TASK_RESPAWN);
+            set_task_ex(g_Cvar[ZOMBIE_RESPAWN_DELAY], "Respawn", victim + TASK_RESPAWN);
         }
     }
 
-    if(team == TEAM_HUMANS && iVictim != iKiller) {
-        rg_set_user_team(iVictim, TEAM_TERRORIST);
-        client_print(0, print_center, "%L", LANG_PLAYER, "REBB_INFECTION", iVictim);
+    if(team == TEAM_HUMANS && victim != iKiller) {
+        rg_set_user_team(victim, TEAM_TERRORIST);
+        client_print(0, print_center, "%L", LANG_PLAYER, "REBB_INFECTION", victim);
 
         ExecuteForward(g_Forward[FWD_INFECTED]);
 
-        if(g_Cvar[INFECTION_RESPAWN_DELAY] && !g_bRoundEnded) {
+        if(g_Cvar[INFECTION_RESPAWN_DELAY] && !g_IsRoundEnded) {
             if(g_Cvar[INFECTION_RESPAWN_DELAY] >= 1.0) {
-                client_print(iVictim, print_center, "%L", LANG_PLAYER, "REBB_INFECTION_RESPAWN", g_Cvar[INFECTION_RESPAWN_DELAY]);
+                client_print(victim, print_center, "%L", LANG_PLAYER, "REBB_INFECTION_RESPAWN", g_Cvar[INFECTION_RESPAWN_DELAY]);
             }
 
-            set_task_ex(g_Cvar[INFECTION_RESPAWN_DELAY], "Respawn", iVictim+TASK_RESPAWN);
+            set_task_ex(g_Cvar[INFECTION_RESPAWN_DELAY], "Respawn", victim + TASK_RESPAWN);
         }
     }
 
@@ -355,61 +352,67 @@ public CBasePlayer_Killed_Post(iVictim, iKiller, iGibType) {
 
 public Ham_Item_Deploy_Post(weapon) {
     new id = get_member(weapon, m_pPlayer);
-
     if(!is_user_authorized(id) || !is_user_zombie(id)) {
         return HAM_IGNORED;
     }
 
-    set_entvar(id, var_viewmodel, fmt("models/zombie_hand/%a.mdl", ArrayGetStringHandle(g_ZombieHandModel, g_iZombieClass[id]))); // TEST
-    set_entvar(id, var_weaponmodel, "");
+    new hand_model[MAX_BUFFER_LENGTH];
+    ArrayGetString(g_ZombieHandModel, g_PlayerInfo[id][ZOMBIE_CLASS], hand_model, charsmax(hand_model));
+
+    set_entvar(id, var_viewmodel, hand_model);
+    set_entvar(id, var_weaponmodel, 0);
 
     return HAM_IGNORED;
 }
 
 public CSGameRules_RestartRound_Pre() {
-    g_bRoundEnded = false;
-    g_bZombiesReleased = false;
+    g_IsRoundEnded = false;
+    g_ZombiesReleased = false;
 
     set_entvar(g_BarrierEnt, var_solid, SOLID_BSP);
     set_entvar(g_BarrierEnt, var_rendermode, kRenderTransColor);
     set_entvar(g_BarrierEnt, var_rendercolor, Float:{ 0.0, 0.0, 0.0 });
     set_entvar(g_BarrierEnt, var_renderamt, 150.0);
 
-    g_iCountTime = g_Cvar[BUILDING_TIME] + 1;
+    g_CountTime = g_Cvar[BUILDING_TIME] + 1;
     set_task_ex(0.1, "BuildTime", TASK_BUILDTIME);
     set_task_ex(1.0, "BuildTime", TASK_BUILDTIME, .flags = SetTask_Repeat);
 
-    if(g_bSwapTeams) {
-        new players[MAX_PLAYERS], count;
-        get_players(players, count);
+    new players[MAX_PLAYERS], count;
+    get_players(players, count);
 
+    if(g_SwapTeams) {
         for(new i, player; i < count; i++) {
             player = players[i];
 
-            if(g_iTeam[player] != TEAM_UNASSIGNED && is_valid_team(player)) {
-                rg_set_user_team(player, g_iTeam[player] == TEAM_ZOMBIE ? TEAM_HUMANS : TEAM_ZOMBIE);
+            if(g_PlayerInfo[player][LAST_TEAM] != TEAM_UNASSIGNED && is_valid_team(player)) {
+                rg_set_user_team(player, g_PlayerInfo[player][LAST_TEAM] == TEAM_ZOMBIE ? TEAM_HUMANS : TEAM_ZOMBIE);
             }
         }
 
-        g_bSwapTeams = false;
+        g_SwapTeams = false;
     }
 
-    arrayset(g_iTeam, TEAM_UNASSIGNED, sizeof(g_iTeam));
+    for(new i; i < count; i++) {
+        g_PlayerInfo[players[i]][LAST_TEAM] = TEAM_UNASSIGNED;
+    }
 }
 
 public BuildTime() {
-    if(!g_bCanBuild) {
-        g_bCanBuild = true;
-        ExecuteForward(g_Forward[FWD_BUILD_START], _, g_iCountTime);
+    if(!g_CanBuild) {
+        g_CanBuild = true;
+        ExecuteForward(g_Forward[FWD_BUILD_START], _, g_CountTime);
     }
 
-    g_iCountTime--;
+    g_CountTime--;
 
-    if(g_iCountTime) {
-        new iMins = g_iCountTime / SECONDS_IN_MINUTE, iSecs = g_iCountTime % SECONDS_IN_MINUTE;
-        client_print(0, print_center, "%L %02d:%02d", LANG_PLAYER, "REBB_BUILD_TIME", iMins, iSecs);
+    if(g_CountTime) {
+        new min = g_CountTime / SECONDS_IN_MINUTE;
+        new sec = g_CountTime % SECONDS_IN_MINUTE;
+
+        client_print(0, print_center, "%L %02d:%02d", LANG_PLAYER, "REBB_BUILD_TIME", min, sec);
     } else {
-        g_bCanBuild = false;
+        g_CanBuild = false;
         remove_task(TASK_BUILDTIME);
         client_print(0, print_center, ""); // clear print_center
 
@@ -420,13 +423,14 @@ public BuildTime() {
             rebb_grab_stop(players[i]);
         }
 
-        g_bPrepTime = true;
+        g_IsPrepTime = true;
 
         if(!g_Cvar[PREPARATION_TIME]) {
             ExecuteForward(g_Forward[FWD_PREPARATION_START], _, g_Cvar[PREPARATION_TIME]);
             Release_Zombies();
         } else {
-            g_iCountTime = g_Cvar[PREPARATION_TIME] + 1;
+            g_CountTime = g_Cvar[PREPARATION_TIME] + 1;
+
             set_task_ex(0.1, "PrepTime", TASK_PREPTIME);
             set_task_ex(1.0, "PrepTime", TASK_PREPTIME, .flags = SetTask_Repeat);
 
@@ -443,11 +447,13 @@ public BuildTime() {
 }
 
 public PrepTime() {
-    g_iCountTime--;
+    g_CountTime--;
 
-    if(g_iCountTime) {
-        new iMins = g_iCountTime / SECONDS_IN_MINUTE, iSecs = g_iCountTime % SECONDS_IN_MINUTE;
-        client_print(0, print_center, "%L %02d:%02d", LANG_PLAYER, "REBB_PREP_TIME", iMins, iSecs);
+    if(g_CountTime) {
+        new min = g_CountTime / SECONDS_IN_MINUTE;
+        new sec = g_CountTime % SECONDS_IN_MINUTE;
+
+        client_print(0, print_center, "%L %02d:%02d", LANG_PLAYER, "REBB_PREP_TIME", min, sec);
     } else {
         remove_task(TASK_PREPTIME);
         Release_Zombies();
@@ -455,8 +461,8 @@ public PrepTime() {
 }
 
 public Release_Zombies() {
-    g_bPrepTime = false;
-    g_bZombiesReleased = true;
+    g_IsPrepTime = false;
+    g_ZombiesReleased = true;
 
     set_entvar(g_BarrierEnt, var_solid, SOLID_NOT);
     set_entvar(g_BarrierEnt, var_renderamt, 0.0);
@@ -467,16 +473,17 @@ public Release_Zombies() {
 }
 
 public Zombie_Menu(id){
-    if(g_bZombiesReleased) {
+    if(g_ZombiesReleased) {
         return PLUGIN_HANDLED;
     }
 
     new menu = menu_create(fmt("%L", LANG_PLAYER, "REBB_ZOMBIE_MENU"), "Zombie_Menu_Handler");
-
-    for(new i, name[MAX_NAME_LENGTH], info[MAX_CLASS_INFO_LENGTH], flag; i < g_ClassesCount; i++) {
+    for(new i, name[MAX_NAME_LENGTH], info[MAX_CLASS_INFO_LENGTH], flag; i < g_ZombieClassesCount; i++) {
         ArrayGetString(g_ZombieName, i, name, sizeof(name));
         ArrayGetString(g_ZombieInfo, i, info, sizeof(info));
+
         flag = ArrayGetCell(g_ZombieFlags, i);
+
         menu_additem(menu, fmt("\w%s \r%s%s", name, info, flag == ADMIN_ALL ? "" : " \y[VIP]"), .paccess = flag);
     }
 
@@ -495,23 +502,21 @@ public Zombie_Menu_Handler(id, menu, item) {
         return;
     }
 
-    g_iZombieClass[id] = item;
+    g_PlayerInfo[id][ZOMBIE_CLASS] = item;
 
     client_print_color(id, print_team_default, "%L ^4%a", LANG_PLAYER, "REBB_ZOMBIE_PICK", ArrayGetStringHandle(g_ZombieName, item)); // TEST
 
-    if(is_user_zombie(id) && !g_bZombiesReleased && !g_bRoundEnded && !task_exists(id+TASK_RESPAWN)) {
+    if(is_user_zombie(id) && !g_ZombiesReleased && !g_IsRoundEnded && !task_exists(id + TASK_RESPAWN)) {
         rg_round_respawn(id);
     }
 }
 
-public taskPlayerHud(iTaskId) {
-    UpdateHUD(iTaskId - TASK_HEALTH);
+public taskPlayerHud(taskid) {
+    UpdateHUD(taskid - TASK_HEALTH);
 }
 
 public Event_Health(id) {
-    //if(is_user_connected(id)) {
-        UpdateHUD(id);
-    //}
+    UpdateHUD(id);
 }
 
 UpdateHUD(const index) {
@@ -520,9 +525,9 @@ UpdateHUD(const index) {
 }
 
 public Respawn(id) {
-    id-=TASK_RESPAWN;
+    id -= TASK_RESPAWN;
 
-    if(is_user_connected(id) && is_user_zombie(id)) {
+    if(is_user_zombie(id)) {
         rg_round_respawn(id);
     }
 }
@@ -541,7 +546,7 @@ RegisterHooks() {
 }
 
 RegisterCoreForwards() {
-    g_Forward[FWD_CLASS_REG_REQUEST] = CreateMultiForward("rebb_class_reg_request", ET_IGNORE);
+    g_Forward[FWD_CLASSES_REG_INIT] = CreateMultiForward("rebb_classes_registration_init", ET_IGNORE);
     g_Forward[FWD_CLASS_REGISTERED] = CreateMultiForward("rebb_class_registered", ET_IGNORE, FP_CELL, FP_STRING);
     g_Forward[FWD_BUILD_START] = CreateMultiForward("rebb_build_start", ET_IGNORE, FP_CELL);
     g_Forward[FWD_PREPARATION_START] = CreateMultiForward("rebb_preparation_start", ET_IGNORE, FP_CELL);
@@ -610,7 +615,7 @@ RegisterCvars() {
 }
 
 GetCvarsPointers() {
-    for(new i; i < sizeof g_MpCvars; i++) {
+    for(new i; i < MULTYPLAY_CVARS; i++) {
         g_Pointer[i] = get_cvar_pointer(g_MpCvars[i]);
     }
 }
@@ -625,10 +630,11 @@ public BlockRadioCmd() {
 }
 
 FindEntity(const entityname[], const targetname[]) {
-    new ent, name[MAX_NAME_LENGTH];
+    new ent, tname[MAX_NAME_LENGTH];
     while((ent = rg_find_ent_by_class(ent, entityname))) {
-        get_entvar(ent, var_targetname, name, charsmax(name));
-        if(equali(name, targetname)) {
+        get_entvar(ent, var_targetname, tname, charsmax(tname));
+
+        if(equali(tname, targetname)) {
             return ent;
         }
     }
@@ -636,18 +642,21 @@ FindEntity(const entityname[], const targetname[]) {
     return NULLENT;
 }
 
-bool:precache_model_ex(Array:arr, const model[], const path[]) {
+bool:PrecacheModelEx(Array:arr, const model_dir[], const model[]) {
     static buffer[MAX_BUFFER_LENGTH];
-    ArrayPushString(arr, model);
 
-    if(equal(path, "player")) {
-        formatex(buffer, sizeof(buffer), "models/%s/%s/%s.mdl", path, model, model);
-    } else {
-        formatex(buffer, sizeof(buffer), "models/%s/%s.mdl", path, model);
+    if(equal(model_dir, "player")) {
+        formatex(buffer, charsmax(buffer), "models/%s/%s/%s.mdl", model_dir, model, model);
+        ArrayPushString(arr, model);
+    } 
+
+    if(equal(model_dir, "zombie_hands")) {
+        formatex(buffer, charsmax(buffer), "models/%s/%s.mdl", model_dir, model);
+        ArrayPushString(arr, buffer);
     }
 
     if(!file_exists(buffer)) {
-        log_amx("Can't find resource '%s'", buffer);
+        rebb_log(PluginStateIgnore, "Can't find resource '%s'", buffer);
         return false;
     }
 
@@ -658,11 +667,20 @@ bool:precache_model_ex(Array:arr, const model[], const path[]) {
 public plugin_natives() {
     register_native("rebb_core_is_running", "native_core_is_running");
     register_native("rebb_register_zombie_class", "native_register_zombie_class");
-    register_native("rebb_get_class_id", "native_zombie_get_class_id");
+    register_native("rebb_get_player_class_index", "native_get_player_class_index");
     register_native("rebb_is_building_phase", "native_is_building_phase");
     register_native("rebb_is_preparation_phase", "native_is_preparation_phase");
     register_native("rebb_is_zombies_released", "native_is_zombies_released");
-    register_native("rebb_barrier_ent", "native_barrier_ent");
+    register_native("rebb_get_barrier_ent_index", "native_get_barrier_ent_index");
+
+    g_ZombieName = ArrayCreate(MAX_NAME_LENGTH, 1);
+    g_ZombieInfo = ArrayCreate(MAX_CLASS_INFO_LENGTH, 1);
+    g_ZombieModel = ArrayCreate(MAX_RESOURCE_PATH_LENGTH, 1);
+    g_ZombieHandModel = ArrayCreate(MAX_RESOURCE_PATH_LENGTH, 1);
+    g_ZombieHP = ArrayCreate(1, 1);
+    g_ZombieSpeed = ArrayCreate(1, 1);
+    g_ZombieGravity = ArrayCreate(1, 1);
+    g_ZombieFlags = ArrayCreate(1, 1);
 }
 
 public native_core_is_running(const plugin, const argc) {
@@ -671,77 +689,100 @@ public native_core_is_running(const plugin, const argc) {
     }
 
     new status[2];
-    if(get_plugin(g_PluginId, status, charsmax(status)) == INVALID_PLUGIN_ID) {
+    if(get_plugin(g_PluginId, .status = status, .len5 = charsmax(status)) == INVALID_PLUGIN_ID) {
         return false;
     }
-    
+
     return bool:(status[0] == 'r' || status[0] == 'd');
 }
 
-public native_register_zombie_class(iPlugin, iParams) {
+public native_register_zombie_class(const plugin, const argc) {
     enum { arg_name = 1, arg_info, arg_model, arg_handmodel, arg_health, arg_speed, arg_gravity, arg_flags };
 
-    if(!g_bCanRegister) {
+    if(!g_CanRegister) {
         return ERR_REG_CLASS__WRONG_PLACE;
     }
 
-    new szName[MAX_NAME_LENGTH], szInfo[MAX_CLASS_INFO_LENGTH], szModel[MAX_RESOURCE_PATH_LENGTH], szHandmodel[MAX_RESOURCE_PATH_LENGTH];
-    new Float:fHealth, Float:fSpeed, Float:fGravity, iFlags;
+    if(argc < 8) {
+        log_error(AMX_ERR_NATIVE, "Invalid num of arguments (%d)! Expected (%d).", argc, 8);
+        return INVALID_ZOMBIE_CLASS;
+    }
 
-    // TODO: Добавить проверку пустой строки имени
-    get_string(arg_name, szName, sizeof(szName));
-    ArrayPushString(g_ZombieName, szName);
+    new name[MAX_NAME_LENGTH];
+    get_string(arg_name, name, sizeof(name));
 
-    get_string(arg_info, szInfo, sizeof(szInfo));
-    ArrayPushString(g_ZombieInfo, szInfo);
+    if(!strlen(name)) {
+        log_error(AMX_ERR_NATIVE, "Name information buffer cannot be empty!");
+        return INVALID_ZOMBIE_CLASS;
+    }
 
-    get_string(arg_model, szModel, sizeof(szModel));
-    if(!precache_model_ex(g_ZombieModel, szModel, "player")) {
+    ArrayPushString(g_ZombieName, name);
+
+    new class_info[MAX_CLASS_INFO_LENGTH];
+    get_string(arg_info, class_info, sizeof(class_info));
+
+    if(!strlen(class_info)) {
+        log_error(AMX_ERR_NATIVE, "A brief description of the class cannot be empty!");
+        return INVALID_ZOMBIE_CLASS;
+    }
+
+    ArrayPushString(g_ZombieInfo, class_info);
+
+    new model[MAX_RESOURCE_PATH_LENGTH];
+    get_string(arg_model, model, sizeof(model));
+
+    if(!PrecacheModelEx(g_ZombieModel, "player", model)) {
         return ERR_REG_CLASS__LACK_OF_RES;
     }
 
-    get_string(arg_handmodel, szHandmodel, sizeof(szHandmodel));
-    if(!precache_model_ex(g_ZombieHandModel, szHandmodel, "zombie_hand")) {
+    new hand_model[MAX_RESOURCE_PATH_LENGTH];
+    get_string(arg_handmodel, hand_model, sizeof(hand_model));
+
+    if(!PrecacheModelEx(g_ZombieHandModel, "zombie_hands", hand_model)) {
         return ERR_REG_CLASS__LACK_OF_RES;
     }
 
-    fHealth = get_param_f(arg_health);
-    ArrayPushCell(g_ZombieHP, fHealth);
+    new Float:health = get_param_f(arg_health);
+    ArrayPushCell(g_ZombieHP, floatmax(0.0, health));
 
-    fSpeed = get_param_f(arg_speed);
-    ArrayPushCell(g_ZombieSpeed, fSpeed);
+    new Float:speed = get_param_f(arg_speed);
+    ArrayPushCell(g_ZombieSpeed, floatmax(0.0, speed));
 
-    fGravity = get_param_f(arg_gravity);
-    ArrayPushCell(g_ZombieGravity, fGravity);
+    new Float:gravity = get_param_f(arg_gravity);
+    ArrayPushCell(g_ZombieGravity, floatmax(0.0, gravity));
 
-    iFlags = get_param(arg_flags);
-    ArrayPushCell(g_ZombieFlags, iFlags);
+    new flags = get_param(arg_flags);
+    ArrayPushCell(g_ZombieFlags, flags);
 
-    ExecuteForward(g_Forward[FWD_CLASS_REGISTERED], _, g_ClassesCount, szName);
+    ExecuteForward(g_Forward[FWD_CLASS_REGISTERED], _, g_ZombieClassesCount, name);
 
-    return g_ClassesCount++;
+    return g_ZombieClassesCount++;
 }
 
-public native_zombie_get_class_id(iPlugin, iParams) {
-    enum { player = 1 };
-    if(!is_user_connected(player)){
-        return -1;
+public native_get_player_class_index(const plugin, const argc) {
+    enum { arg_player = 1 };
+
+    new player = get_param(arg_player);
+    if(!is_user_authorized(player)) {
+        log_error(AMX_ERR_NATIVE, "Invalid player (%d).", player);
+        return INVALID_ZOMBIE_CLASS;
     }
-    return g_iZombieClass[ get_param(player) ];
+
+    return g_PlayerInfo[player][ZOMBIE_CLASS];
 }
 
-public native_is_building_phase(iPlugin, iParams) {
-    return _:g_bCanBuild;
+public native_is_building_phase(const plugin, const argc) {
+    return bool:g_CanBuild;
 }
 
-public native_is_preparation_phase(iPlugin, iParams) {
-    return _:g_bPrepTime;
+public native_is_preparation_phase(const plugin, const argc) {
+    return bool:g_IsPrepTime;
 }
 
-public native_is_zombies_released(iPlugin, iParams) {
-    return _:g_bZombiesReleased;
+public native_is_zombies_released(const plugin, const argc) {
+    return bool:g_ZombiesReleased;
 }
 
-public native_barrier_ent(iPlugin, iParams) {
+public native_get_barrier_ent_index(const plugin, const argc) {
     return g_BarrierEnt;
 }

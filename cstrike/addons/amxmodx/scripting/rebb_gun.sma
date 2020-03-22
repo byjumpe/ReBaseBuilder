@@ -3,7 +3,7 @@
 #include <amxmodx>
 #include <re_basebuilder>
 
-new const VERSION[] = "0.0.4 Alpha";
+new const VERSION[] = "0.0.2 Alpha";
 
 new const CONFIG_NAME[] = "rebb_guns_menu.ini";
 
@@ -46,11 +46,11 @@ new g_iPrimaryWeapons,
 
 public plugin_init() {
     register_plugin("[ReBB] Guns Menu", VERSION, "ReBB");
-/*
+    
     if(!rebb_core_is_running()) {
         set_fail_state("Core of mod is not running! No further work with plugin possible!");
-    } 
-*/
+    }
+
     for(new i; i < sizeof(GUNS_CMDS); i++) {
         register_clcmd(GUNS_CMDS[i], "Guns_Menu");
     }
@@ -210,15 +210,12 @@ public Primary_Menu_Handler(id, menu, item) {
     new iMoney = get_member(id, m_iAccount);
     if(iMoney < g_szPrimaryWeapons[item][WEAPON_COST]){
         client_print_color(id, print_team_red, "^3%L", LANG_PLAYER, "REBB_GUNS_BUY_FAIL");
-        Primary_Menu(id);
         return;
     } else {
         rg_give_item(id, g_szPrimaryWeapons[item][WEAPON_CLASSNAME], GT_REPLACE);
         rg_set_user_bpammo(id, g_szPrimaryWeapons[item][WEAPON_ID], g_szPrimaryWeapons[item][WEAPON_BPAMMO]);
         rg_add_account(id, iMoney - g_szPrimaryWeapons[item][WEAPON_COST], AS_SET);
         client_print_color(id, print_team_default, "%L ^4%s", LANG_PLAYER, "REBB_GUNS_BUY_SUCCESS", g_szPrimaryWeapons[item][WEAPON_NAME]);
-        Secondary_Menu(id);
-        return;
     }
 }
 
@@ -256,14 +253,12 @@ public Secondary_Menu_Handler(id, menu, item) {
     new iMoney = get_member(id, m_iAccount);
     if(iMoney < g_szSecondaryWeapons[item][WEAPON_COST]){
         client_print_color(id, print_team_red, "^3%L", LANG_PLAYER, "REBB_GUNS_BUY_FAIL");
-        Secondary_Menu(id);
         return;
     } else {
         rg_give_item(id, g_szSecondaryWeapons[item][WEAPON_CLASSNAME], GT_REPLACE);
         rg_set_user_bpammo(id, g_szSecondaryWeapons[item][WEAPON_ID], g_szSecondaryWeapons[item][WEAPON_BPAMMO]);
         rg_add_account(id, iMoney - g_szSecondaryWeapons[item][WEAPON_COST], AS_SET);
         client_print_color(id, print_team_default, "%L ^4%s", LANG_PLAYER, "REBB_GUNS_BUY_SUCCESS", g_szSecondaryWeapons[item][WEAPON_NAME]);
-        return;
     }
 }
 

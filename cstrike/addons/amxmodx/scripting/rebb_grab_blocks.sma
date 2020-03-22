@@ -6,8 +6,6 @@
 #include <fakemeta_util>
 #include <re_basebuilder>
 
-new const VERSION[] = "0.0.2 Alpha";
-
 const Float:MAX_MOVE_DISTANCE = 768.0;
 const Float:MIN_MOVE_DISTANCE = 32.0;
 const Float:MIN_DIST_SET = 64.0;
@@ -27,22 +25,22 @@ enum FORWARDS_LIST {
 
 new g_Forward[FORWARDS_LIST];
 new g_iResetEnt, g_iLockBlocks, g_BarrierEnt, g_iOwnedEnt[MAX_PLAYERS +1];
-new Float: g_fEntDist[MAX_PLAYERS +1];
-new Float: g_fOffset1[MAX_PLAYERS +1], Float: g_fOffset2[MAX_PLAYERS +1], Float: g_fOffset3[MAX_PLAYERS +1];
+new Float:g_fEntDist[MAX_PLAYERS +1];
+new Float:g_fOffset1[MAX_PLAYERS +1], Float:g_fOffset2[MAX_PLAYERS +1], Float:g_fOffset3[MAX_PLAYERS +1];
 
-new HookChain: g_hPreThink;
+new HookChain:g_hPreThink;
 
 public plugin_precache() {
+    register_plugin("[ReBB] Grab Blocks", "0.0.5 Alpha", "ReBB");
+
+    if(!rebb_core_is_running()) {
+        rebb_log(PluginPause, "Core of mod is not running! No further work with plugin possible!");
+    }
+
     RegisterGrabForwards();
 }
 
 public plugin_init() {
-    register_plugin("[ReBB] Grab Blocks", VERSION, "ReBB");
-/*
-    if(!rebb_core_is_running()) {
-        set_fail_state("Core of mod is not running! No further work with plugin possible!");
-    }
-*/
     RegisterHooks();
 
     bind_pcvar_num(
@@ -55,7 +53,7 @@ public plugin_init() {
     );
 
     g_iLockBlocks = get_cvar_num("rebb_lock_blocks");
-    g_BarrierEnt = rebb_barrier_ent();
+    g_BarrierEnt = rebb_get_barrier_ent_index();
 }
 
 public rebb_build_start() {
@@ -132,7 +130,7 @@ public CBasePlayer_PreThink(id) {
         return;
     }
 
-    if(/*!g_iOwnedEnt[id] || !is_entity(g_iOwnedEnt[id])*/is_nullent(g_iOwnedEnt[id])) {
+    if(is_nullent(g_iOwnedEnt[id])) {
         return;
     }
 
@@ -192,7 +190,7 @@ public CmdGrabMove(id) {
         return PLUGIN_HANDLED;
     }
 
-    if(/*g_iOwnedEnt[id] && is_entity(g_iOwnedEnt[id])*/!is_nullent(g_iOwnedEnt[id])) {
+    if(!is_nullent(g_iOwnedEnt[id])) {
         CmdGrabStop(id);
     }
 
@@ -288,9 +286,7 @@ RegisterGrabForwards() {
 
 public plugin_natives() {
     register_native("rebb_grab_stop", "native_grab_stop");
-    register_native("rebb_get_owned_ent", "native_get_owned_ent");
 }
-
 public native_grab_stop(iPlugin, iParams) {
     new id = get_param(1);
     if(!is_user_connected(id)) {
@@ -298,13 +294,4 @@ public native_grab_stop(iPlugin, iParams) {
     }
 
     return CmdGrabStop(id);
-}
-
-public native_get_owned_ent(iPlugin, iParams) {
-    new id = get_param(1);
-
-    if(!is_user_connected(id)){
-        return -1;
-    }
-    return g_iOwnedEnt[id];
 }

@@ -1,7 +1,7 @@
 #include <amxmodx>
 #include <re_basebuilder>
 
-new const VERSION[] = "0.1.2 Alpha";
+new const VERSION[] = "0.1.3 Alpha";
 new const CONFIG_NAME[] = "rebb_sounds.ini";
 
 new const g_DefaultKnifeSounds[][] = {
@@ -42,7 +42,7 @@ enum (+=1) {
 new Array:g_SoundsBuildersWin, Array:g_SoundsZombieWin, Array:g_SoundsZombieDeath, Array:g_SoundsZombiePain;
 new Trie:g_SoundsZombieKnife, Trie:g_SoundsZombieKnifeKeys, Trie:g_SoundsGameEvents, Trie:g_SoundsGameEventsKeys, Trie:g_SoundsMisc, Trie:g_SoundsMiscKeys;
 
-new g_BufferInfo[MAX_RESOURCE_PATH_LENGTH];
+new g_BufferInfo[64];
 
 new g_NumSoundsBuildersWin, g_NumSoundsZombieWin, g_NumSoundsZombieDeath, g_NumSoundsZombiePain;
 new g_Section;
@@ -50,6 +50,8 @@ new g_Section;
 #define CONTAIN_WAV_FILE(%1)        (containi(%1, ".wav") != -1)
 
 public plugin_precache() {
+    register_plugin("[ReBB] Sounds", VERSION, "ReBB");
+
     g_SoundsBuildersWin = ArrayCreate(MAX_RESOURCE_PATH_LENGTH);
     g_SoundsZombieWin = ArrayCreate(MAX_RESOURCE_PATH_LENGTH);
     g_SoundsZombieDeath = ArrayCreate(MAX_RESOURCE_PATH_LENGTH);
@@ -77,16 +79,16 @@ public plugin_precache() {
         TrieSetCell(g_SoundsMiscKeys, g_MiscKeys[count], count);
     }
 
-    new sConfigsDir[MAX_RESOURCE_PATH_LENGTH];
-    get_localinfo("amxx_configsdir", sConfigsDir, charsmax(sConfigsDir));
-    format(sConfigsDir, charsmax(sConfigsDir), "%s/%s/%s", sConfigsDir, REBB_MOD_DIR_NAME, CONFIG_NAME);
+    new filedir[MAX_RESOURCE_PATH_LENGTH];
+    get_localinfo("amxx_configsdir", filedir, charsmax(filedir));
+    format(filedir, charsmax(filedir), "%s/%s/%s", filedir, REBB_MOD_DIR_NAME, CONFIG_NAME);
 
-    if(!file_exists(sConfigsDir)) {
-        set_fail_state("File '%s' not found!", sConfigsDir);   
+    if(!file_exists(filedir)) {
+        rebb_log(PluginPause, "File '%s' not found!", filedir);
     }
 
-    if(!parseConfigINI(sConfigsDir)) {
-        set_fail_state("Fatal parse error!");
+    if(!parseConfigINI(filedir)) {
+        rebb_log(PluginPause, "Fatal parse error!");
     }
 
     if(g_SoundsBuildersWin) {
@@ -111,12 +113,10 @@ public plugin_precache() {
 }
 
 public plugin_init() {
-    register_plugin("[ReBB] Sounds", VERSION, "ReBB");
-/*
     if(!rebb_core_is_running()) {
-        set_fail_state("Core of mod is not running! No further work with plugin possible!");
+        rebb_log(PluginPause, "Core of mod is not running! No further work with plugin possible!");
     }
-*/    
+    
     register_message(get_user_msgid("SendAudio"), "MessageHook_SendAudio");
 
     RegisterHookChain(RH_SV_StartSound, "SV_StartSound_Pre", false);
@@ -220,7 +220,7 @@ public bool:ReadCFGNewSection(INIParser:handle, const section[], bool:invalid_to
         return false;
     }
 
-    if(equal(section, "builders_win")) {
+    if(equal(section, "humans_win")) {
         g_Section = BuildersWin;
         return true;
     }
