@@ -9,8 +9,8 @@
 /**
  * Error codes
  */
-#define INVALID_ZOMBIE_CLASS			    -1
-#define ERR_REG_CLASS__WRONG_PLACE		    -2
+#define INVALID_ZOMBIE_CLASS                -1
+#define ERR_REG_CLASS__WRONG_PLACE            -2
 #define ERR_REG_CLASS__LACK_OF_RES          -3
 
 
@@ -63,7 +63,6 @@ enum StateSet {
 #define SetLastMover(%1,%2)                 (set_entvar(%1, var_iuser4, %2))
 #define UnsetLastMover(%1)                  (set_entvar(%1, var_iuser4, 0))
 #define GetLastMover(%1)                    (get_entvar(%1, var_iuser4))
-
 
 /**
  * Forwards
@@ -186,20 +185,14 @@ native rebb_core_is_running();
  * Registers a custom class which will be added to the zombie classes menu of ReBB.
  *
  * @note    The returned zombie class ID can be later used to identify
- *			the class when calling the bb_get_user_zombie_class() natives.
+ *            the class when calling the bb_get_user_zombie_class() natives.
  *
  * @param szName            Caption to display on the menu.
  * @param szInfo            Brief description of the class.
- * @param szModel           Player model to be used.
- * @param szHandmodel       Claws model to be used.
- * @param fHealth           Initial health points.
- * @param fSpeed            Maximum speed.
- * @param fGravity          Gravity multiplier.
- * @param fKnockback        Empty value.
  * @param flags             Set flag of admin only class, ADMIN_USER is normal players.
  * @return                  An internal zombie class ID, or ERR_REG_CLASS__* on failure.
  */
-native rebb_register_zombie_class(const szName[], const szInfo[], const szModel[], const szHandmodel[], Float:fHealth, Float:fSpeed, Float:fGravity, flags = ADMIN_ALL);
+native rebb_register_zombie_class(const szName[], const szInfo[], flags = ADMIN_ALL);
 
 /**
  * Returns a player's current zombie class ID.
@@ -212,6 +205,48 @@ native rebb_register_zombie_class(const szName[], const szInfo[], const szModel[
 native rebb_get_player_class_index(id);
 
 /**
+ * Sets the zombie model.
+ *
+ * @param classid           Zombie class index.
+ * @param szModel           Zombie model name.
+ */
+rebb_set_zombie_model(classid, const szModel[]);
+
+/**
+ * Sets the model of zombie hands.
+ *
+ * @param classid           Zombie class index.
+ * @param szHandmodel       Hand model name.
+ */
+rebb_set_zombie_handmodel(classid, const szHandmodel[]);
+
+/**
+ * Sets the amount of zombie health.
+ *
+ * @note    The returned zombie class ID can be later used to identify
+ *
+ * @param classid           Zombie class index.
+ * @param fHealth           Initial health points.
+ */
+rebb_set_zombie_health(classid, Float:fHealth);
+
+/**
+ * Sets the speed of movement of the zombie.
+ *
+ * @param classid           Zombie class index.
+ * @param fSpeed            Maximum speed.
+ */
+rebb_set_zombie_speed(classid, Float:fSpeed);
+
+/**
+ * Sets the zombie's gravity.
+ *
+ * @param classid           Zombie class index.
+ * @param fGravity          Gravity multiplier.
+ */
+rebb_set_zombie_gravity(classid, Float:fGravity);
+
+/**
  * Checks building phase status.
  *
  * @return                  True if building phase is active, false otherwise.
@@ -221,14 +256,14 @@ native rebb_is_building_phase();
 /**
  * Checks preparation phase status.
  *
- * @return					True if preparation phase is active, false otherwise.
+ * @return                  True if preparation phase is active, false otherwise.
  */
 native rebb_is_preparation_phase();
 
 /**
  * Checks zombies release status.
  *
- * @return					True if zombies are released, false otherwise.
+ * @return                  True if zombies are released, false otherwise.
  */
 native rebb_is_zombies_released();
 
@@ -313,4 +348,26 @@ stock rebb_log(const StateSet:pl_state = PluginStateIgnore, const string[] = "",
     if(pl_state == PluginPause) {
         pause("d");
     }
+}
+
+/**
+ * Precache the zombie model.
+ *
+ * @param model[]          Model name.
+ */
+stock precache_zombie_model(const model[]) {
+    static buffer[MAX_BUFFER_LENGTH];
+    formatex(buffer, charsmax(buffer), "models/player/%s/%s.mdl", model, model);
+    precache_model(buffer);
+}
+
+/**
+ * Precache model of zombie hands.
+ *
+ * @param model[]          Model name.
+ */
+stock precache_zombie_handlmodel(const model[]) {
+    static buffer[MAX_BUFFER_LENGTH];
+    formatex(buffer, charsmax(buffer), "models/zombie_hands/%s.mdl", model);
+    precache_model(buffer);
 }

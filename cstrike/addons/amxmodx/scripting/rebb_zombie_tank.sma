@@ -13,19 +13,17 @@ const Float:ZombieSpeed = 260.0;
 const Float:ZombieGravity = 1.0;
 
 const ZombieFlags = ADMIN_ALL
-const TANK_ARMOR = 100;
 
 new g_Class_Tank;
 
 public rebb_classes_registration_init() {
-    register_plugin("[ReBB] Zombie Tank", "0.1.6", "ReBB");
+    register_plugin("[ReBB] Zombie Tank", "0.1.10", "ReBB");
 
     if(!rebb_core_is_running()) {
         rebb_log(PluginPause, "Core of mod is not running! No further work with plugin possible!");
     }
-	// мб для задела вынести установку хп, скорости, гравитации и флагов в отдельные нативы?
-	// даст возможность в каких-то случаях менять эти параметры, что есть хорошо
-    g_Class_Tank = rebb_register_zombie_class(ZombieName, ZombieInfo, ZombieModel, ZombieHandModel, ZombieHP, ZombieSpeed, ZombieGravity, ZombieFlags);
+
+    g_Class_Tank = rebb_register_zombie_class(ZombieName, ZombieInfo, ZombieFlags);
 
     switch(g_Class_Tank) {
         case ERR_REG_CLASS__WRONG_PLACE: rebb_log(PluginPause, "Class registration must be implemented in 'rebb_classes_registration_init'!");
@@ -33,18 +31,17 @@ public rebb_classes_registration_init() {
     }
 }
 
-public plugin_init() {
-    RegisterHookChain(RG_CBasePlayer_Spawn, "CBasePlayer_Spawn", true);    
+public rebb_class_registered(iRegClassId, const szName[]) {
+    if(iRegClassId == g_Class_Default) {
+        rebb_set_zombie_model(g_Class_Tank, ZombieModel);
+        rebb_set_zombie_handmodel(g_Class_Tank, ZombieHandModel);
+        rebb_set_zombie_health(g_Class_Tank, ZombieHP);
+        rebb_set_zombie_speed(g_Class_Tank, ZombieSpeed);
+        rebb_set_zombie_gravity(g_Class_Tank, ZombieGravity);
+    }
 }
 
-public CBasePlayer_Spawn(id) {
-    if(!is_user_alive(id) || !is_user_zombie(id)) {
-        return HC_CONTINUE;
-    }    
-
-    if(rebb_get_player_class_index(id) == g_Class_Tank){
-        rg_set_user_armor(id, TANK_ARMOR, ARMOR_VESTHELM);
-    }
-
-    return HC_CONTINUE;
+public plugin_precache() {
+    precache_zombie_model(ZombieModel);
+    precache_zombie_handlmodel(ZombieHandModel);
 }
