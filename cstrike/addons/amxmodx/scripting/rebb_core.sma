@@ -32,7 +32,6 @@ Thx for the mod idea and original code
 new const VERSION[] = "0.11.30 Alpha";
 new const CONFIG_NAME[] = "ReBaseBuilder.cfg";
 
-const Float:MAX_HOLDTIME = 20.0;
 //Default zomdie parameters
 const Float:ZOMBIE_SPEED = 280.0;
 const Float:ZOMBIE_HEALTH = 1000.0;
@@ -43,8 +42,7 @@ enum COLOR { R, G, B };
 enum (+= 100) {
     TASK_BUILDTIME = 100,
     TASK_PREPTIME,
-    TASK_RESPAWN,
-    TASK_HEALTH
+    TASK_RESPAWN
 };
 
 enum any:CVAR_LIST {
@@ -68,15 +66,13 @@ enum any:DATA_LIST {
 };
 
 enum FORWARDS_LIST {
-    FWD_CLASSES_REG_INIT,
     FWD_CLASS_REGISTERED,
     FWD_BUILD_START,
     FWD_PREPARATION_START,
     FWD_ZOMBIES_RELEASED,
-    FWD_INFECTED
+    FWD_INFECTED,
 };
 
-new const g_HudColor[COLOR] = { 255, 0, 0 };
 new const g_MpCvars[MULTYPLAY_CVARS][] = {
     "mp_buytime",
     "mp_roundover",
@@ -89,7 +85,6 @@ new g_Cvar[CVAR_LIST];
 new g_PlayerInfo[MAX_PLAYERS + 1][DATA_LIST];
 
 new bool:g_ZombiesReleased;
-new bool:g_CanRegister;
 new bool:g_SwapTeams;
 new bool:g_CanBuild;
 new bool:g_IsPrepTime;
@@ -108,14 +103,11 @@ new g_ZombieClassesCount;
 new g_CountTime;
 
 new g_BarrierEnt;
-new g_SyncHud;
 new g_PluginId;
 
 public plugin_precache() {
     g_PluginId = register_plugin("[ReBB] Core", VERSION, "ReBB");
-
     RegisterCoreForwards();
-    RegisterZombieClasses();
 }
 
 public plugin_init() {
@@ -123,23 +115,11 @@ public plugin_init() {
 
     RegisterHooks();
     RegisterCvars();
+    RegisterCommands();
 
-    new const menu_cmd[][] = { "say /zm", "say_team /zm" };
-    for(new i; i < sizeof menu_cmd; i++) {
-        register_clcmd(menu_cmd[i], "Zombie_Menu");
-    }
-
-    new const radio_cmd[][] = { "radio1", "radio2", "radio3" };
-    for(new i; i < sizeof radio_cmd; i++) {
-        register_clcmd(radio_cmd[i], "BlockRadioCmd");
-    }
-
-    register_event("Health", "Event_Health", "be", "1>0");
     set_msg_block(get_user_msgid("ClCorpse"), BLOCK_SET);
 
-    g_SyncHud = CreateHudSyncObj();
     g_BarrierEnt = FindEntity("func_wall", "barrier");
-
     if(is_nullent(g_BarrierEnt)) {
         rebb_log(PluginPause, "There is no barrier on this map!");
     }
@@ -183,7 +163,6 @@ public client_disconnected(id) {
     g_PlayerInfo[id][ZOMBIE_CLASS] = 0;   
 
     remove_task(id + TASK_RESPAWN);
-    remove_task(id + TASK_HEALTH);
 }
 
 public RoundEnd_Post(WinStatus:status, ScenarioEventEndRound:event) {
@@ -262,7 +241,6 @@ public CBasePlayer_Spawn_Post(const id) {
         return HC_CONTINUE;
     }
 
-    remove_task(id + TASK_HEALTH);
     remove_task(id + TASK_RESPAWN);
 
     // Бредовая идея, ибо тима может быть спектры т.к. это нигде не обработано
@@ -299,8 +277,6 @@ public CBasePlayer_Spawn_Post(const id) {
         rg_set_user_model(id, zombie_model, true);
     }
 
-    set_task_ex(MAX_HOLDTIME, "taskPlayerHud", id+TASK_HEALTH, .flags = SetTask_Repeat);
-
     return HC_CONTINUE;
 }
 
@@ -327,9 +303,6 @@ public CBasePlayer_Killed_Post(victim, iKiller, iGibType) {
     }
 
     rebb_grab_stop(victim);
-
-    remove_task(victim + TASK_HEALTH);
-    ClearSyncHud(victim, g_SyncHud);
 
     new team = get_member(victim, m_iTeam);
     if(team == TEAM_ZOMBIE) {
@@ -391,6 +364,7 @@ public CSGameRules_RestartRound_Pre() {
     new players[MAX_PLAYERS], count;
     get_players(players, count);
 
+    // переделать
     if(g_SwapTeams) {
         for(new i, player; i < count; i++) {
             player = players[i];
@@ -521,25 +495,20 @@ public Zombie_Menu_Handler(id, menu, item) {
     }
 }
 
-public taskPlayerHud(taskid) {
-    UpdateHUD(taskid - TASK_HEALTH);
-}
-
-public Event_Health(id) {
-    UpdateHUD(id);
-}
-
-UpdateHUD(const index) {
-    set_hudmessage(g_HudColor[R], g_HudColor[G], g_HudColor[B], 0.02, 0.95, .holdtime = MAX_HOLDTIME, .channel = -1);
-    ShowSyncHudMsg(index, g_SyncHud, "[%.0f HP]", Float:get_entvar(index, var_health));
-}
-
 public Respawn(id) {
     id -= TASK_RESPAWN;
 
     if(is_user_zombie(id)) {
         rg_round_respawn(id);
     }
+}
+
+RegisterCoreForwards() {
+    g_Forward[FWD_CLASS_REGISTERED] = CreateMultiForward("rebb_class_registered", ET_IGNORE, FP_CELL);
+    g_Forward[FWD_BUILD_START] = CreateMultiForward("rebb_build_start", ET_IGNORE, FP_CELL);
+    g_Forward[FWD_PREPARATION_START] = CreateMultiForward("rebb_preparation_start", ET_IGNORE, FP_CELL);
+    g_Forward[FWD_ZOMBIES_RELEASED] = CreateMultiForward("rebb_zombies_released", ET_IGNORE);
+    g_Forward[FWD_INFECTED] = CreateMultiForward("rebb_infected", ET_IGNORE);
 }
 
 RegisterHooks() {
@@ -553,15 +522,6 @@ RegisterHooks() {
     RegisterHookChain(RG_CBasePlayer_Killed, "CBasePlayer_Killed_Post", true);
 
     RegisterHam(Ham_Item_Deploy, "weapon_knife", "Ham_Item_Deploy_Post", true);
-}
-
-RegisterCoreForwards() {
-    g_Forward[FWD_CLASSES_REG_INIT] = CreateMultiForward("rebb_classes_registration_init", ET_IGNORE);
-    g_Forward[FWD_CLASS_REGISTERED] = CreateMultiForward("rebb_class_registered", ET_IGNORE, FP_CELL, FP_STRING);
-    g_Forward[FWD_BUILD_START] = CreateMultiForward("rebb_build_start", ET_IGNORE, FP_CELL);
-    g_Forward[FWD_PREPARATION_START] = CreateMultiForward("rebb_preparation_start", ET_IGNORE, FP_CELL);
-    g_Forward[FWD_ZOMBIES_RELEASED] = CreateMultiForward("rebb_zombies_released", ET_IGNORE);
-    g_Forward[FWD_INFECTED] = CreateMultiForward("rebb_infected", ET_IGNORE);
 }
 
 RegisterCvars() {
@@ -621,7 +581,18 @@ RegisterCvars() {
             .description = GetCvarDesc("REBB_BLOCK_DROP_WEAPON")
         ), g_Cvar[BLOCK_DROP_WEAPON]
     );
+}
 
+RegisterCommands() {
+    new const menu_cmd[][] = { "say /zm", "say_team /zm" };
+    for(new i; i < sizeof menu_cmd; i++) {
+        register_clcmd(menu_cmd[i], "Zombie_Menu");
+    }
+
+    new const radio_cmd[][] = { "radio1", "radio2", "radio3" };
+    for(new i; i < sizeof radio_cmd; i++) {
+        register_clcmd(radio_cmd[i], "BlockRadioCmd");
+    }
 }
 
 GetCvarsPointers() {
@@ -652,7 +623,24 @@ FindEntity(const entityname[], const targetname[]) {
     return NULLENT;
 }
 
-RegisterZombieClasses() {
+public plugin_natives() {
+    register_library("rebb_api");
+
+    register_native("rebb_core_is_running", "native_core_is_running");
+
+    register_native("rebb_register_zombie_class", "native_register_zombie_class");
+    register_native("rebb_get_player_class_index", "native_get_player_class_index");
+    register_native("rebb_set_zombie_model", "native_set_zombie_model");
+    register_native("rebb_set_zombie_handmodel", "native_set_zombie_handmodel");
+    register_native("rebb_set_zombie_health", "native_set_zombie_health");
+    register_native("rebb_set_zombie_speed", "native_set_zombie_speed");
+    register_native("rebb_set_zombie_gravity", "native_set_zombie_gravity");
+
+    register_native("rebb_is_building_phase", "native_is_building_phase");
+    register_native("rebb_is_preparation_phase", "native_is_preparation_phase");
+    register_native("rebb_is_zombies_released", "native_is_zombies_released");
+    register_native("rebb_get_barrier_ent_index", "native_get_barrier_ent_index");
+
     g_ZombieName = ArrayCreate(MAX_NAME_LENGTH, 1);
     g_ZombieInfo = ArrayCreate(MAX_CLASS_INFO_LENGTH, 1);
     g_ZombieModel = ArrayCreate(MAX_RESOURCE_PATH_LENGTH, 1);
@@ -661,31 +649,9 @@ RegisterZombieClasses() {
     g_ZombieSpeed = ArrayCreate(1, 1);
     g_ZombieGravity = ArrayCreate(1, 1);
     g_ZombieFlags = ArrayCreate(1, 1);
-
-    g_CanRegister = true;
-
-    ExecuteForward(g_Forward[FWD_CLASSES_REG_INIT]);
-
-    if(!g_ZombieClassesCount) {
-        rebb_log(PluginPause, "Registered zombie classes not found!");
-    }
 }
 
-public plugin_natives() {
-    register_native("rebb_core_is_running", "native_core_is_running");
-    register_native("rebb_register_zombie_class", "native_register_zombie_class");
-    register_native("rebb_get_player_class_index", "native_get_player_class_index");
-    register_native("rebb_set_zombie_model", "native_set_zombie_model");
-    register_native("rebb_set_zombie_handmodel", "native_set_zombie_handmodel");
-    register_native("rebb_set_zombie_health", "native_set_zombie_health");
-    register_native("rebb_set_zombie_speed", "native_set_zombie_speed");
-    register_native("rebb_set_zombie_gravity", "native_set_zombie_gravity");
-    register_native("rebb_is_building_phase", "native_is_building_phase");
-    register_native("rebb_is_preparation_phase", "native_is_preparation_phase");
-    register_native("rebb_is_zombies_released", "native_is_zombies_released");
-    register_native("rebb_get_barrier_ent_index", "native_get_barrier_ent_index");
-}
-
+// переделать натив
 public native_core_is_running(const plugin, const argc) {
     if(g_PluginId == INVALID_PLUGIN_ID) {
         return false;
@@ -702,14 +668,7 @@ public native_core_is_running(const plugin, const argc) {
 public native_register_zombie_class(const plugin, const argc) {
     enum { arg_name = 1, arg_info, arg_flags };
 
-    if(!g_CanRegister) {
-        return ERR_REG_CLASS__WRONG_PLACE;
-    }
-
-    if(argc < 8) {
-        log_error(AMX_ERR_NATIVE, "Invalid num of arguments (%d)! Expected (%d).", argc, 8);
-        return INVALID_ZOMBIE_CLASS;
-    }
+    CHECK_NATIVE_ARGS_NUM(argc, 3, INVALID_ZOMBIE_CLASS)
 
     new name[MAX_NAME_LENGTH];
     get_string(arg_name, name, sizeof(name));
@@ -719,28 +678,38 @@ public native_register_zombie_class(const plugin, const argc) {
         return INVALID_ZOMBIE_CLASS;
     }
 
+    new class_index = ArrayFindString(g_ZombieName, name);
+    if(class_index != -1) {
+        log_error(AMX_ERR_NATIVE, "Class already registered (%s), class index (%d).", name, class_index);
+        return INVALID_ZOMBIE_CLASS;
+    }
+
     ArrayPushString(g_ZombieName, name);
 
     new class_info[MAX_CLASS_INFO_LENGTH];
     get_string(arg_info, class_info, sizeof(class_info));
 
     if(!strlen(class_info)) {
-        log_error(AMX_ERR_NATIVE, "A brief description of the class cannot be empty!");
+        log_error(AMX_ERR_NATIVE, "Description of class cannot be empty!");
         return INVALID_ZOMBIE_CLASS;
     }
 
     ArrayPushString(g_ZombieInfo, class_info);
 
-    new flags = get_param(arg_flags);
+    new flags_buffer[32];
+    get_string(arg_flags, flags_buffer, sizeof(flags_buffer));
+
+    new flags = !strlen(flags_buffer) ? 0 : read_flags(flags_buffer);
     ArrayPushCell(g_ZombieFlags, flags);
 
-    ExecuteForward(g_Forward[FWD_CLASS_REGISTERED], _, g_ZombieClassesCount, name);
-
+    ExecuteForward(g_Forward[FWD_CLASS_REGISTERED], _, g_ZombieClassesCount);
     return g_ZombieClassesCount++;
 }
 
 public native_get_player_class_index(const plugin, const argc) {
     enum { arg_player = 1 };
+
+    CHECK_NATIVE_ARGS_NUM(argc, 1, INVALID_ZOMBIE_CLASS)
 
     new player = get_param(arg_player);
     if(!is_user_authorized(player)) {
@@ -752,13 +721,12 @@ public native_get_player_class_index(const plugin, const argc) {
 }
 
 public native_set_zombie_model(const plugin, const argc) {
-    enum { arg_classid = 1, arg_model};
+    enum { arg_class_index = 1, arg_model};
 
-    new classid = get_param(arg_classid);
-    if(0 < classid <= g_ZombieClassesCount) {
-        log_error(AMX_ERR_NATIVE, "Invalid zombie class id (%d).", classid);
-        return INVALID_ZOMBIE_CLASS;
-    }
+    CHECK_NATIVE_ARGS_NUM(argc, 2, false)
+
+    new class_index = get_param(arg_class_index);
+    CHECK_ZOMBIE_CLASS_INDEX(class_index, AMX_ERR_NATIVE, false)
 
     new model[MAX_RESOURCE_PATH_LENGTH];
     get_string(arg_model, model, sizeof(model));
@@ -767,20 +735,22 @@ public native_set_zombie_model(const plugin, const argc) {
     formatex(buffer, charsmax(buffer), "models/player/%s/%s.mdl", model, model);
     ArrayPushString(g_ZombieModel, model);
 
+    // переписать на log_error(AMX_ERR_NATIVE,
     if(!file_exists(buffer)) {
         rebb_log(PluginStateIgnore, "Can't find resource '%s'", buffer);
         return false;
     }
+
+    return true;
 }
 
 public native_set_zombie_handmodel(const plugin, const argc) {
-    enum { arg_classid = 1, arg_model};
+    enum { arg_class_index = 1, arg_model};
 
-    new classid = get_param(arg_classid);
-    if(0 < classid <= g_ZombieClassesCount) {
-        log_error(AMX_ERR_NATIVE, "Invalid zombie class id (%d).", classid);
-        return INVALID_ZOMBIE_CLASS;
-    }
+    CHECK_NATIVE_ARGS_NUM(argc, 2, false)
+
+    new class_index = get_param(arg_class_index);
+    CHECK_ZOMBIE_CLASS_INDEX(class_index, AMX_ERR_NATIVE, false)
 
     new model[MAX_RESOURCE_PATH_LENGTH];
     get_string(arg_model, model, sizeof(model));
@@ -793,58 +763,50 @@ public native_set_zombie_handmodel(const plugin, const argc) {
         rebb_log(PluginStateIgnore, "Can't find resource '%s'", buffer);
         return false;
     }
+
+    return true;
 }
 
 public native_set_zombie_health(const plugin, const argc) {
-    enum { arg_classid = 1, arg_health};
+    enum { arg_class_index = 1, arg_health};
 
-    new classid = get_param(arg_classid);
-    if(0 < classid <= g_ZombieClassesCount) {
-        log_error(AMX_ERR_NATIVE, "Invalid zombie class id (%d).", classid);
-        return INVALID_ZOMBIE_CLASS;
-    }
+    CHECK_NATIVE_ARGS_NUM(argc, 2, false)
+
+    new class_index = get_param(arg_class_index);
+    CHECK_ZOMBIE_CLASS_INDEX(class_index, AMX_ERR_NATIVE, false)
 
     new Float:health = get_param_f(arg_health);
     ArrayPushCell(g_ZombieHP, floatmax(0.0, health));
+
+    return true;
 }
 
 public native_set_zombie_speed(const plugin, const argc) {
-    enum { arg_classid = 1, arg_speed};
+    enum { arg_class_index = 1, arg_speed};
 
-    new classid = get_param(arg_classid);
-    if(0 < classid <= g_ZombieClassesCount) {
-        log_error(AMX_ERR_NATIVE, "Invalid zombie class id (%d).", classid);
-        return INVALID_ZOMBIE_CLASS;
-    }
+    CHECK_NATIVE_ARGS_NUM(argc, 2, false)
 
-    new Float:speed = get_param_f(arg_speed);
-    ArrayPushCell(g_ZombieSpeed, floatmax(0.0, speed));
-}
-
-public native_set_zombie_speed(const plugin, const argc) {
-    enum { arg_classid = 1, arg_speed};
-
-    new classid = get_param(arg_classid);
-    if(0 < classid <= g_ZombieClassesCount) {
-        log_error(AMX_ERR_NATIVE, "Invalid zombie class id (%d).", classid);
-        return INVALID_ZOMBIE_CLASS;
-    }
+    new class_index = get_param(arg_class_index);
+    CHECK_ZOMBIE_CLASS_INDEX(class_index, AMX_ERR_NATIVE, false)
 
     new Float:speed = get_param_f(arg_speed);
     ArrayPushCell(g_ZombieSpeed, floatmax(0.0, speed));
+
+    return true;
 }
 
 public native_set_zombie_gravity(const plugin, const argc) {
-    enum { arg_classid = 1, arg_speed};
+    enum { arg_class_index = 1, arg_gravity};
 
-    new classid = get_param(arg_classid);
-    if(0 < classid <= g_ZombieClassesCount) {
-        log_error(AMX_ERR_NATIVE, "Invalid zombie class id (%d).", classid);
-        return INVALID_ZOMBIE_CLASS;
-    }
+    CHECK_NATIVE_ARGS_NUM(argc, 2, false)
+
+    new class_index = get_param(arg_class_index);
+    CHECK_ZOMBIE_CLASS_INDEX(class_index, AMX_ERR_NATIVE, false)
 
     new Float:gravity = get_param_f(arg_gravity);
     ArrayPushCell(g_ZombieGravity, floatmax(0.0, gravity));
+
+    return true;
 }
 
 public native_is_building_phase(const plugin, const argc) {

@@ -9,8 +9,8 @@
 /**
  * Error codes
  */
-#define INVALID_ZOMBIE_CLASS                -1
-#define ERR_REG_CLASS__WRONG_PLACE            -2
+#define INVALID_ZOMBIE_CLASS			    -1
+#define ERR_REG_CLASS__WRONG_PLACE		    -2
 #define ERR_REG_CLASS__LACK_OF_RES          -3
 
 
@@ -65,27 +65,45 @@ enum StateSet {
 #define GetLastMover(%1)                    (get_entvar(%1, var_iuser4))
 
 /**
- * Forwards
+ * Macro to check number of arguments in native.
+ * 
+ * @param1					Number of parameters.
+ * @param2					Verifiable arg.
+ * @param3					Return value.
  */
- 
-/**
- * Called when resources are precache, when zombie class registration is available.
- *
- * @note    All classess should registers not early than in this forward.
- *
- * @noreturn
- */
-forward rebb_classes_registration_init();
+#define CHECK_NATIVE_ARGS_NUM(%1,%2,%3) \
+	if(%1 < %2) { \
+		log_error(AMX_ERR_NATIVE, "Invalid num of arguments (%d). Expected (%d).", %1, %2); \
+		return %3; \
+	}
 
 /**
- * Called to announce zombie class registration.
+*	Macro to check the index of zombie class. Is index valid?
+*
+* 	@param1					Verifiable index of zombie class.
+* 	@param2					Error code.
+* 	@param3					Return value.
+*
+*	@note					See AMX error codes in amxconst.inc for param2 (err_type).
+**/
+#define CHECK_ZOMBIE_CLASS_INDEX(%1,%2,%3) \
+	if(0 > %1 || %1 >= g_ZombieClassesCount) { \
+		log_error(%2, "Invalid zombie class index (%d).", %1); \
+		return %3; \
+	}
+
+/**
+ * Forwards
+ */
+
+/**
+ * Called when a zombie class is registered.
  *
- * @param iRegClassId       Class registration index.
- * @param szName            Class name.
+ * @param class_index       Registered class index.
  *
  * @noreturn
  */
-forward rebb_class_registered(iRegClassId, const szName[]);
+forward rebb_class_registered(class_index);
 
 /**
  * Called after build phase was started.
@@ -185,7 +203,7 @@ native rebb_core_is_running();
  * Registers a custom class which will be added to the zombie classes menu of ReBB.
  *
  * @note    The returned zombie class ID can be later used to identify
- *            the class when calling the bb_get_user_zombie_class() natives.
+ *			the class when calling the bb_get_user_zombie_class() natives.
  *
  * @param szName            Caption to display on the menu.
  * @param szInfo            Brief description of the class.
@@ -207,44 +225,42 @@ native rebb_get_player_class_index(id);
 /**
  * Sets the zombie model.
  *
- * @param classid           Zombie class index.
- * @param szModel           Zombie model name.
+ * @param class_index          Zombie class index.
+ * @param szModel           Player model to be used.
  */
-rebb_set_zombie_model(classid, const szModel[]);
+rebb_set_zombie_model(class_index, const szModel[]);
 
 /**
  * Sets the model of zombie hands.
  *
- * @param classid           Zombie class index.
- * @param szHandmodel       Hand model name.
+ * @param class_index       Zombie class index.
+ * @param szHandmodel       Claws model to be used.
  */
-rebb_set_zombie_handmodel(classid, const szHandmodel[]);
+rebb_set_zombie_handmodel(class_index, const szHandmodel[]);
 
 /**
  * Sets the amount of zombie health.
  *
- * @note    The returned zombie class ID can be later used to identify
- *
- * @param classid           Zombie class index.
+ * @param class_index       Zombie class index.
  * @param fHealth           Initial health points.
  */
-rebb_set_zombie_health(classid, Float:fHealth);
+rebb_set_zombie_health(class_index, Float:fHealth);
 
 /**
  * Sets the speed of movement of the zombie.
  *
- * @param classid           Zombie class index.
+ * @param class_index       Zombie class index.
  * @param fSpeed            Maximum speed.
  */
-rebb_set_zombie_speed(classid, Float:fSpeed);
+rebb_set_zombie_speed(class_index, Float:fSpeed);
 
 /**
  * Sets the zombie's gravity.
  *
- * @param classid           Zombie class index.
+ * @param class_index       Zombie class index.
  * @param fGravity          Gravity multiplier.
  */
-rebb_set_zombie_gravity(classid, Float:fGravity);
+rebb_set_zombie_gravity(class_index, Float:fGravity);
 
 /**
  * Checks building phase status.
@@ -256,14 +272,14 @@ native rebb_is_building_phase();
 /**
  * Checks preparation phase status.
  *
- * @return                  True if preparation phase is active, false otherwise.
+ * @return					True if preparation phase is active, false otherwise.
  */
 native rebb_is_preparation_phase();
 
 /**
  * Checks zombies release status.
  *
- * @return                  True if zombies are released, false otherwise.
+ * @return					True if zombies are released, false otherwise.
  */
 native rebb_is_zombies_released();
 
@@ -350,24 +366,14 @@ stock rebb_log(const StateSet:pl_state = PluginStateIgnore, const string[] = "",
     }
 }
 
-/**
- * Precache the zombie model.
- *
- * @param model[]          Model name.
- */
 stock precache_zombie_model(const model[]) {
     static buffer[MAX_BUFFER_LENGTH];
-    formatex(buffer, charsmax(buffer), "models/player/%s/%s.mdl", model, model);
-    precache_model(buffer);
+	formatex(buffer, charsmax(buffer), "models/player/%s/%s.mdl", model, model);
+	precache_model(buffer);
 }
 
-/**
- * Precache model of zombie hands.
- *
- * @param model[]          Model name.
- */
 stock precache_zombie_handlmodel(const model[]) {
-    static buffer[MAX_BUFFER_LENGTH];
-    formatex(buffer, charsmax(buffer), "models/zombie_hands/%s.mdl", model);
-    precache_model(buffer);
+	static buffer[MAX_BUFFER_LENGTH];
+	formatex(buffer, charsmax(buffer), "models/zombie_hands/%s.mdl", model);
+	precache_model(buffer);
 }
