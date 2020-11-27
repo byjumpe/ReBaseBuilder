@@ -29,7 +29,7 @@ Thx for the mod idea and original code
 #include <time>
 #include <re_basebuilder>
 
-new const VERSION[] = "0.11.30 Alpha";
+new const VERSION[] = "0.12.0 Alpha";
 new const CONFIG_NAME[] = "ReBaseBuilder.cfg";
 
 //Default zomdie parameters
@@ -40,8 +40,7 @@ const Float:ZOMBIE_GRAVITY = 1.0;
 enum COLOR { R, G, B };
 
 enum (+= 100) {
-    TASK_BUILDTIME = 100,
-    TASK_PREPTIME,
+    TASK_PREPTIME = 100,
     TASK_RESPAWN
 };
 
@@ -57,6 +56,7 @@ enum any:CVAR_LIST {
 enum any:MULTYPLAY_CVARS {
     MP_BUYTIME,
     MP_ROUNDOVER,
+	MP_FREEZETIME
 };
 
 enum any:DATA_LIST {
@@ -76,6 +76,7 @@ enum FORWARDS_LIST {
 new const g_MpCvars[MULTYPLAY_CVARS][] = {
     "mp_buytime",
     "mp_roundover",
+	"mp_freezetime"
 };
 
 new g_Pointer[MULTYPLAY_CVARS];
@@ -241,6 +242,10 @@ public CBasePlayer_Spawn_Post(const id) {
         return HC_CONTINUE;
     }
 
+    if(g_CanBuild && is_user_alive(id)){
+        set_entvar(id, var_maxspeed, 320.0);
+    }
+
     remove_task(id + TASK_RESPAWN);
 
     // Бредовая идея, ибо тима может быть спектры т.к. это нигде не обработано
@@ -285,7 +290,10 @@ public CBasePlayer_ResetMaxSpeed_Post(id) {
         return HC_CONTINUE;
     }
 
-    if(is_user_zombie(id)) {
+    if(g_CanBuild && is_user_alive(id)){
+        set_entvar(id, var_maxspeed, 320.0);
+    }
+    else if(is_user_zombie(id)) {
         // NOTE: this will break any external speed modificator (like temporary speed bost item in zombie escape)
         if(ArrayFindValue(g_ZombieSpeed, g_PlayerInfo[id][ZOMBIE_CLASS]) != -1) {
             set_entvar(id, var_maxspeed, Float:ArrayGetCell(g_ZombieSpeed, g_PlayerInfo[id][ZOMBIE_CLASS]));
@@ -348,18 +356,19 @@ public Ham_Item_Deploy_Post(weapon) {
     return HAM_IGNORED;
 }
 
-public CSGameRules_RestartRound_Pre() {
+public BuildTime_Start() {
     g_IsRoundEnded = false;
     g_ZombiesReleased = false;
+
+	if(!g_CanBuild) {
+        g_CanBuild = true;
+        ExecuteForward(g_Forward[FWD_BUILD_START]);
+    }
 
     set_entvar(g_BarrierEnt, var_solid, SOLID_BSP);
     set_entvar(g_BarrierEnt, var_rendermode, kRenderTransColor);
     set_entvar(g_BarrierEnt, var_rendercolor, Float:{ 0.0, 0.0, 0.0 });
     set_entvar(g_BarrierEnt, var_renderamt, 150.0);
-
-    g_CountTime = g_Cvar[BUILDING_TIME] + 1;
-    set_task_ex(0.1, "BuildTime", TASK_BUILDTIME);
-    set_task_ex(1.0, "BuildTime", TASK_BUILDTIME, .flags = SetTask_Repeat);
 
     new players[MAX_PLAYERS], count;
     get_players(players, count);
@@ -382,50 +391,38 @@ public CSGameRules_RestartRound_Pre() {
     }
 }
 
-public BuildTime() {
-    if(!g_CanBuild) {
-        g_CanBuild = true;
-        ExecuteForward(g_Forward[FWD_BUILD_START], _, g_CountTime);
+public BuildTime_End() {
+    new players[MAX_PLAYERS], count;
+    get_players_ex(players, count, GetPlayers_ExcludeDead|GetPlayers_MatchTeam, "CT");
+
+    for(new i; i < count; i++) {
+        new weapon = get_member(players[i], m_pActiveItem);
+        if(weapon != -1){
+           set_entvar(players[i], var_maxspeed, get_member(weapon, m_Weapon_fMaxSpeed));
+        }
+        rebb_grab_stop(players[i]);
     }
 
-    g_CountTime--;
+    g_CanBuild = false;
+    g_IsPrepTime = true;
 
-    if(g_CountTime) {
-        new min = g_CountTime / SECONDS_IN_MINUTE;
-        new sec = g_CountTime % SECONDS_IN_MINUTE;
-
-        client_print(0, print_center, "%L %02d:%02d", LANG_PLAYER, "REBB_BUILD_TIME", min, sec);
+    if(!g_Cvar[PREPARATION_TIME]) {
+        ExecuteForward(g_Forward[FWD_PREPARATION_START], _, g_Cvar[PREPARATION_TIME]);
+        Release_Zombies();
     } else {
-        g_CanBuild = false;
-        remove_task(TASK_BUILDTIME);
-        client_print(0, print_center, ""); // clear print_center
+        g_CountTime = g_Cvar[PREPARATION_TIME] + 1;
 
-        new players[MAX_PLAYERS], count;
-        get_players_ex(players, count, GetPlayers_ExcludeDead|GetPlayers_MatchTeam, "CT");
+        set_task_ex(0.1, "PrepTime", TASK_PREPTIME);
+        set_task_ex(1.0, "PrepTime", TASK_PREPTIME, .flags = SetTask_Repeat);
+
+        client_print_color(0, print_team_default, "%L", LANG_PLAYER, "REBB_PREP_BUILDERS_SPAWN");
 
         for(new i; i < count; i++) {
-            rebb_grab_stop(players[i]);
+            rg_round_respawn(players[i]);
         }
 
-        g_IsPrepTime = true;
-
-        if(!g_Cvar[PREPARATION_TIME]) {
-            ExecuteForward(g_Forward[FWD_PREPARATION_START], _, g_Cvar[PREPARATION_TIME]);
-            Release_Zombies();
-        } else {
-            g_CountTime = g_Cvar[PREPARATION_TIME] + 1;
-
-            set_task_ex(0.1, "PrepTime", TASK_PREPTIME);
-            set_task_ex(1.0, "PrepTime", TASK_PREPTIME, .flags = SetTask_Repeat);
-
-            client_print_color(0, print_team_default, "%L", LANG_PLAYER, "REBB_PREP_BUILDERS_SPAWN");
-
-            for(new i; i < count; i++) {
-                rg_round_respawn(players[i]);
-            }
-
-            // after players respawning
-            ExecuteForward(g_Forward[FWD_PREPARATION_START], _, g_Cvar[PREPARATION_TIME]);
+        // after players respawning
+        ExecuteForward(g_Forward[FWD_PREPARATION_START], _, g_Cvar[PREPARATION_TIME]);
         }
     }
 }
@@ -505,7 +502,7 @@ public Respawn(id) {
 
 RegisterCoreForwards() {
     g_Forward[FWD_CLASS_REGISTERED] = CreateMultiForward("rebb_class_registered", ET_IGNORE, FP_CELL);
-    g_Forward[FWD_BUILD_START] = CreateMultiForward("rebb_build_start", ET_IGNORE, FP_CELL);
+    g_Forward[FWD_BUILD_START] = CreateMultiForward("rebb_build_start");
     g_Forward[FWD_PREPARATION_START] = CreateMultiForward("rebb_preparation_start", ET_IGNORE, FP_CELL);
     g_Forward[FWD_ZOMBIES_RELEASED] = CreateMultiForward("rebb_zombies_released", ET_IGNORE);
     g_Forward[FWD_INFECTED] = CreateMultiForward("rebb_infected", ET_IGNORE);
@@ -513,7 +510,8 @@ RegisterCoreForwards() {
 
 RegisterHooks() {
     RegisterHookChain(RG_RoundEnd, "RoundEnd_Post", true);
-    RegisterHookChain(RG_CSGameRules_RestartRound, "CSGameRules_RestartRound_Pre", false);
+    RegisterHookChain(RG_CSGameRules_RestartRound, "BuildTime_Start", false);
+    RegisterHookChain(RG_CSGameRules_OnRoundFreezeEnd, "BuildTime_End", false);
     RegisterHookChain(RG_CBasePlayer_DropPlayerItem, "CBasePlayer_DropPlayerItem_Pre", false);
     RegisterHookChain(RG_CBasePlayer_HasRestrictItem, "CBasePlayer_HasRestrictItem_Pre", false);
     RegisterHookChain(RG_CBasePlayer_OnSpawnEquip, "CBasePlayer_OnSpawnEquip_Pre", false);
@@ -604,6 +602,7 @@ GetCvarsPointers() {
 SetCvarsValues() {
     set_pcvar_num(g_Pointer[MP_BUYTIME], 0);
     set_pcvar_num(g_Pointer[MP_ROUNDOVER], 1);
+    set_pcvar_num(g_Pointer[MP_FREEZETIME], g_Cvar[BUILDING_TIME]);
 }
 
 public BlockRadioCmd() {

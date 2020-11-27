@@ -16,8 +16,13 @@ const ZombieFlags = ADMIN_ALL
 
 new g_Class_Tank;
 
+public plugin_precache() {
+    precache_zombie_model(ZombieModel);
+    precache_zombie_handlmodel(ZombieHandModel);
+}
+
 public rebb_classes_registration_init() {
-    register_plugin("[ReBB] Zombie Tank", "0.1.10", "ReBB");
+    register_plugin("[ReBB] Zombie Tank", "0.2.0", "ReBB");
 
     if(!rebb_core_is_running()) {
         rebb_log(PluginPause, "Core of mod is not running! No further work with plugin possible!");
@@ -32,16 +37,11 @@ public rebb_classes_registration_init() {
 }
 
 public rebb_class_registered(iRegClassId, const szName[]) {
-    if(iRegClassId == g_Class_Default) {
+    if(iRegClassId == g_Class_Tank) {
         rebb_set_zombie_model(g_Class_Tank, ZombieModel);
         rebb_set_zombie_handmodel(g_Class_Tank, ZombieHandModel);
         rebb_set_zombie_health(g_Class_Tank, ZombieHP);
         rebb_set_zombie_speed(g_Class_Tank, ZombieSpeed);
         rebb_set_zombie_gravity(g_Class_Tank, ZombieGravity);
     }
-}
-
-public plugin_precache() {
-    precache_zombie_model(ZombieModel);
-    precache_zombie_handlmodel(ZombieHandModel);
 }
