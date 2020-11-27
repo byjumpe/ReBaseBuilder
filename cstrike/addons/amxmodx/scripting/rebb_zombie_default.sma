@@ -37,7 +37,7 @@ public plugin_init() {
 }
 
 public rebb_class_registered(class_index) {
-    if(iRegClassId == g_Class_Tank) {
+    if(iRegClassId == g_ClassDefault) {
         rebb_set_zombie_model(g_ClassDefault, ZombieModel);
         rebb_set_zombie_handmodel(g_ClassDefault, ZombieHandModel);
         rebb_set_zombie_health(g_ClassDefault, ZombieHP);
