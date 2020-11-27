@@ -2,15 +2,15 @@
 #include <re_basebuilder>
 
 // TODO: Change to ML keys
-new const ZombieName[] = "ТАНК";
-new const ZombieInfo[] = "Много HP";
+new const ZombieName[]      = "ТАНК";
+new const ZombieInfo[]      = "Много HP";
 
-new const ZombieModel[] = "rebb_tank";
+new const ZombieModel[]     = "rebb_tank";
 new const ZombieHandModel[] = "v_rebb_tank";
 
-const Float:ZombieHP = 5000.0;
-const Float:ZombieSpeed = 260.0;
-const Float:ZombieGravity = 1.0;
+const Float:ZombieHP        = 5000.0;
+const Float:ZombieSpeed     = 260.0;
+const Float:ZombieGravity   = 1.0;
 
 const ZombieFlags = ADMIN_ALL
 

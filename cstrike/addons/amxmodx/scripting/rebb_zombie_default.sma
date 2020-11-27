@@ -21,7 +21,7 @@ public plugin_precache() {
     precache_zombie_handlmodel(ZombieHandModel);
 }
 
-public plugin_init() {
+public rebb_classes_registration_init() {
     register_plugin("[ReBB] Zombie Default", "0.2.0", "ReBB");   
 
     if(!rebb_core_is_running()) {
@@ -36,7 +36,7 @@ public plugin_init() {
     }
 }
 
-public rebb_class_registered(class_index) {
+public rebb_class_registered(iRegClassId, const szName[]) {
     if(iRegClassId == g_ClassDefault) {
         rebb_set_zombie_model(g_ClassDefault, ZombieModel);
         rebb_set_zombie_handmodel(g_ClassDefault, ZombieHandModel);
