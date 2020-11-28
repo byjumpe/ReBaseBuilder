@@ -1,3 +1,5 @@
+#pragma semicolon 1
+
 #include <amxmodx>
 #include <re_basebuilder>
 
@@ -12,7 +14,7 @@ const Float:ZombieHP        = 5000.0;
 const Float:ZombieSpeed     = 260.0;
 const Float:ZombieGravity   = 1.0;
 
-const ZombieFlags = ADMIN_ALL
+const ZombieFlags = ADMIN_ALL;
 
 new g_Class_Tank;
 
@@ -36,7 +38,7 @@ public rebb_classes_registration_init() {
     }
 }
 
-public rebb_class_registered(iRegClassId, const szName[]) {
+public rebb_class_registered(iRegClassId) {
     if(iRegClassId == g_Class_Tank) {
         rebb_set_zombie_model(g_Class_Tank, ZombieModel);
         rebb_set_zombie_handmodel(g_Class_Tank, ZombieHandModel);

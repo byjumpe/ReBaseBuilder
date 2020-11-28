@@ -1,3 +1,5 @@
+#pragma semicolon 1
+
 #include <amxmodx>
 #include <re_basebuilder>
 
@@ -12,9 +14,9 @@ const Float:ZombieHP        = 3000.0;
 const Float:ZombieSpeed     = 280.0;
 const Float:ZombieGravity   = 1.0;
 
-const ZombieFlags = ADMIN_ALL
+const ZombieFlags = ADMIN_ALL;
 
-new g_ClassDefault;
+new g_Class_Default;
 
 public plugin_precache() {
     precache_zombie_model(ZombieModel);
@@ -28,19 +30,20 @@ public rebb_classes_registration_init() {
         rebb_log(PluginPause, "Core of mod is not running! No further work with plugin possible!");
     }
 
-    g_ClassDefault = rebb_register_zombie_class(ZombieName, ZombieInfo, ZombieFlags);
-	
-    switch(g_ClassDefault) {
+    g_Class_Default = rebb_register_zombie_class(ZombieName, ZombieInfo, ZombieFlags);
+
+    switch(g_Class_Default) {
         case ERR_REG_CLASS__WRONG_PLACE: rebb_log(PluginPause, "Class registration must be implemented in 'rebb_classes_registration_init'!");
         case ERR_REG_CLASS__LACK_OF_RES: rebb_log(PluginPause, "Can't find some resource, see logs for more info!");
     }
 }
 
-public rebb_class_registered(iRegClassId, const szName[]) {
-    if(iRegClassId == g_ClassDefault) {
-        rebb_set_zombie_model(g_ClassDefault, ZombieModel);
-        rebb_set_zombie_handmodel(g_ClassDefault, ZombieHandModel);
-        rebb_set_zombie_health(g_ClassDefault, ZombieHP);
-        rebb_set_zombie_speed(g_ClassDefault, ZombieSpeed);
-        rebb_set_zombie_gravity(g_ClassDefault, ZombieGravity);
+public rebb_class_registered(iRegClassId) {
+    if(iRegClassId == g_Class_Default) {
+        rebb_set_zombie_model(g_Class_Default, ZombieModel);
+        rebb_set_zombie_handmodel(g_Class_Default, ZombieHandModel);
+        rebb_set_zombie_health(g_Class_Default, ZombieHP);
+        rebb_set_zombie_speed(g_Class_Default, ZombieSpeed);
+        rebb_set_zombie_gravity(g_Class_Default, ZombieGravity);
+    }
 }

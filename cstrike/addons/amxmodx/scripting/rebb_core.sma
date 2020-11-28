@@ -29,7 +29,7 @@ Thx for the mod idea and original code
 #include <time>
 #include <re_basebuilder>
 
-new const VERSION[] = "0.12.0 Alpha";
+new const VERSION[] = "0.12.2 Alpha";
 new const CONFIG_NAME[] = "ReBaseBuilder.cfg";
 
 //Default zomdie parameters
@@ -180,7 +180,6 @@ public RoundEnd_Post(WinStatus:status, ScenarioEventEndRound:event) {
         remove_task(player+TASK_RESPAWN);
     }
 
-    remove_task(TASK_BUILDTIME);
     remove_task(TASK_PREPTIME);
 
     switch(event) {
@@ -360,7 +359,7 @@ public BuildTime_Start() {
     g_IsRoundEnded = false;
     g_ZombiesReleased = false;
 
-	if(!g_CanBuild) {
+    if(!g_CanBuild) {
         g_CanBuild = true;
         ExecuteForward(g_Forward[FWD_BUILD_START]);
     }
@@ -423,7 +422,6 @@ public BuildTime_End() {
 
         // after players respawning
         ExecuteForward(g_Forward[FWD_PREPARATION_START], _, g_Cvar[PREPARATION_TIME]);
-        }
     }
 }
 
@@ -502,7 +500,7 @@ public Respawn(id) {
 
 RegisterCoreForwards() {
     g_Forward[FWD_CLASS_REGISTERED] = CreateMultiForward("rebb_class_registered", ET_IGNORE, FP_CELL);
-    g_Forward[FWD_BUILD_START] = CreateMultiForward("rebb_build_start");
+    g_Forward[FWD_BUILD_START] = CreateMultiForward("rebb_build_start", ET_IGNORE);
     g_Forward[FWD_PREPARATION_START] = CreateMultiForward("rebb_preparation_start", ET_IGNORE, FP_CELL);
     g_Forward[FWD_ZOMBIES_RELEASED] = CreateMultiForward("rebb_zombies_released", ET_IGNORE);
     g_Forward[FWD_INFECTED] = CreateMultiForward("rebb_infected", ET_IGNORE);
